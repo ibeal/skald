@@ -12,3 +12,7 @@ clap = { version = "4.5.53", features = ["derive"] }
 # `preserve_order` keeps a ticket's frontmatter key order in `--json`, so machine output reads in the
 # same order as the file a human edits.
 serde_json = { version = "1.0.145", features = ["preserve_order"] }
+# `created`/`updated` are dates a human reads, so they have to be *local* dates. Computing one from
+# `SystemTime` alone gives UTC, which is a day off every evening west of Greenwich — a log entry dated
+# tomorrow is worse than a dependency.
+jiff = "0.2.35"
