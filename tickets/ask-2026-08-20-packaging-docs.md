@@ -8,7 +8,7 @@ repos:
 branch:
 link:
 pr:
-parent: ask-2026-08-19-skald-ticket-cli
+parent:
 created: 2026-08-20
 updated: 2026-08-20
 ---
@@ -64,3 +64,16 @@ and having it create, refine, advance, and log a ticket.
   now the only way an agent can discover the field set and the two structural rules, so the
   verification became "an agent can drive a ticket from `docs` alone" rather than "docs print
   something usable".
+- 2026-08-20: Built `skald docs` and `docs/agent-usage.md`, compiled in with `include_str!`.
+  **`docs` deliberately resolves no store.** It is the recovery path for an agent that cannot work out
+  the interface, and "`$SKALD_STORE` is not set" is one of the things it explains — so failing on that
+  very condition would be self-defeating. It returns before store resolution rather than after.
+- 2026-08-20: The guide is written for the reader's actual situation: it opens by saying the directory
+  is denied and that `cat`/`Read`/`grep` will not work, because an agent's first instinct on a refusal
+  is to route around the tool. It ends with a table mapping each refusal to the way through, and says
+  plainly that a genuine gap is worth reporting to a human rather than working around — since there is
+  no way around.
+- 2026-08-20: `docket` ships as a symlink from `flake.nix`'s `postInstall` rather than a second
+  `[[bin]]`, which would compile the same crate twice for no gain.
+- 2026-08-20: cleared parent: the parent ticket lives in the dotfiles store, and parent is same-store by design since that is what --parent filters on. The relationship is stated in the AC context instead.
+- 2026-08-20: Review found the guide false in two places -- it claimed new would refuse a decorated status when it did not, and miscounted the commands. Both fixed alongside the code. Added the refusal that will actually be most common during rollout, which is a write refused for a violation it would introduce, plus the two things the tool genuinely cannot do: fill a managed date, and delete or rename a ticket.

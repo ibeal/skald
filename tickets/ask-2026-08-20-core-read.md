@@ -7,7 +7,7 @@ repos:
 branch:
 link:
 pr:
-parent: ask-2026-08-19-skald-ticket-cli
+parent:
 created: 2026-08-20
 updated: 2026-08-20
 ---
@@ -142,3 +142,4 @@ contract. Unsetting `$SKALD_STORE` produces an actionable error and a non-zero e
   disagree with it. `parent` and `branch` added. Outstanding build work: delete `schema.rs` and the
   JSON schema, compile the contract in, rework the `list` filters into named flags, and teach `list`
   about `title`.
+- 2026-08-20: cleared parent: the parent ticket lives in the dotfiles store, and parent is same-store by design since that is what --parent filters on. The relationship is stated in the AC context instead.

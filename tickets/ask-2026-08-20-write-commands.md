@@ -7,7 +7,7 @@ repos:
 branch:
 link:
 pr:
-parent: ask-2026-08-19-skald-ticket-cli
+parent:
 created: 2026-08-20
 updated: 2026-08-20
 ---
@@ -125,3 +125,29 @@ every command still passes `skald check` and differs from the original only in t
   unanticipated note belongs in the trail a resuming reader is already looking at. `ac` replaces
   `set-section` for the one section that needed wholesale editing. Six commands total across the whole
   tool.
+- 2026-08-20: Built. One dependency added — `jiff` — because `created`/`updated` are dates a human
+  reads, so they have to be *local* dates. Computing one from `SystemTime` alone gives UTC, which is a
+  day off every evening west of Greenwich, and a log entry dated tomorrow is a small lie that
+  compounds. That was worth a dependency in a crate that otherwise has two.
+- 2026-08-20: `guard()` runs `check::inspect` on the rendered result before anything is written, so
+  rule 8 holds by construction rather than by remembering to enforce it at each call site. A refused
+  write never touches the file, because the render happens in memory and the guard sits between the
+  render and the `fs::write`.
+- 2026-08-20: **The walkthrough earned its place in the AC immediately — it found three defects the
+  unit tests missed.** (1) Appending at the very end of a file left it without a trailing newline,
+  and every subsequent append kept it that way. (2) Replacing the acceptance criteria ate the blank
+  line before `## Log`, because a section body owns the separator to the next heading. (3) `skald ac t
+  "- a criterion"` was rejected outright — clap read the leading `-` as a flag, which rejects the most
+  ordinary input a criteria list has. All three are the kind of thing only end-to-end use surfaces,
+  which is the argument for the walkthrough being blocking rather than nice-to-have.
+- 2026-08-20: Walkthrough result: **complete, no coverage gaps.** Create; read whole on resume; write
+  the AC while refining; advance status at each boundary; record branch and PR in one write; pause with
+  a reason and resume with the phase intact; append narrative progress including multi-line via
+  `--stdin`; finish. Every refusal was exercised and each names the way through — frozen criteria,
+  terminal status, decorated status, and a `pr` holding prose. `skald check` is clean on the result.
+- 2026-08-20: `log` strips one leading `- ` from an entry, because `log` writes the bullet itself and a
+  caller that wrote one too got `- 2026-08-20: - text`. Not a guess: the entry's own list marker is
+  redundant by construction.
+- 2026-08-20: cleared parent: the parent ticket lives in the dotfiles store, and parent is same-store by design since that is what --parent filters on. The relationship is stated in the AC context instead.
+- 2026-08-20: Fresh-eyes review found four blocking defects. The important one was architectural: guard() validated the whole ticket, so a legacy ticket carrying phase: -- which --fix deliberately will not repair, because renaming a key is meaning rather than shape -- could never be written to again. No log, no status change, nothing, and no rescue once the deny lands. The rule is 'do not create a violation', not 'refuse to touch an imperfect ticket', and those are different. guard now compares against the violations already present and refuses only what a write introduces.
+- 2026-08-20: Also fixed from the review: a newline in a flag value produced frontmatter that is not YAML, with check seeing nothing wrong because a bare line is neither key nor continuation; ac and log accepted empty text and silently erased the criteria the freeze exists to protect; fs::write was not atomic, so a crash mid-write would truncate a ticket and take its whole log; appends into a CRLF file used bare newlines and accumulated mixed endings. Writes now go through a temp file and rename, and the file's own line ending is used.
