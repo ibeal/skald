@@ -1,86 +1,64 @@
 ---
-id: ask-2026-08-20-packaging-docs
-source: plain-ask
-spec: authored here
-mode: direct
-phase: intake
-pr:
-projects:
+title: "Packaging, built-in docs, and the docket alias"
+status: building
+paused:
+repos:
   - skald
   - dotfiles
+branch:
+link:
+pr:
+parent: ask-2026-08-19-skald-ticket-cli
 created: 2026-08-20
 updated: 2026-08-20
 ---
 
-# ask-2026-08-20-packaging-docs — Packaging, built-in docs, `docket` alias
+## Acceptance criteria
 
-> Slice 4 of 4. Parent spec: `dotfiles/agents/tickets/ask-2026-08-19-skald-ticket-cli.md`.
-> Depends on slices 1–3.
-
----
-
-## Spec — acceptance criteria
-
-**Context.** `skald` is only useful once it's installed on the machines that need it and once agents
+**Context.** `skald` is only useful once it is installed on the machines that need it and once agents
 can discover how to drive it without a human pasting instructions. `rata` already solves both; mirror
-it.
-
-**Refined (after intake):**
+it. The discoverability half matters more than usual here: after the deny lands, an agent that cannot
+work out the interface has no fallback, because it cannot read the directory to figure it out.
 
 ### Packaging
 
 - `flake.nix` exposing the package and a dev shell, wired into the dotfiles home-manager config so
   `skald` is on PATH.
-- Ship **`docket` as a supported alias** — a second binary name (or installed shell alias) for anyone
-  who doesn't want the Norse theming. `docket` was the runner-up: "a register of matters awaiting
-  action" is fully self-explanatory. It lost as primary because it shares a four-character prefix with
-  `docker`, so shell completion can't disambiguate until the fifth keystroke and the two misread for
-  each other at a glance. **`skald` stays canonical** in all docs and agent instructions so there's
-  one name in the corpus.
+- Ship **`docket` as a supported alias** — a second binary name for anyone who does not want the Norse
+  theming. `docket` was the runner-up: "a register of matters awaiting action" is fully
+  self-explanatory. It lost as primary because it shares a four-character prefix with `docker`, so
+  shell completion cannot disambiguate until the fifth keystroke and the two misread for each other at
+  a glance. **`skald` stays canonical** in all docs and agent instructions so there is one name in the
+  corpus.
 - Document setting `$SKALD_STORE` per store via direnv, with the personal and work stores as worked
   examples.
 
 ### Docs
 
-- `skald docs` subcommand printing built-in guidance, as `rata docs` does — so an agent can discover
-  the interface from inside a session without a file read.
+- `skald docs` printing built-in guidance, as `rata docs` does — so an agent can discover the
+  interface from inside a session without a file read. This is the recovery path once the deny is in
+  place, so it must cover the whole write side, the status vocabulary, the two structural rules (the
+  AC freeze and the append-only log), and what to do when a write is refused.
 - `README.md` for humans; `docs/agent-usage.md` as the copy an agent is pointed at.
-- A JSON schema for `.schema.toml`, referenced by `#:schema`, so editor tooltips carry the contract
-  at the point of authoring — the same trick `rata.toml` uses.
 - Document the pre-commit hook invocation for `skald check`.
 
 **Explicitly out of scope:**
 
+- **A JSON schema for the store config.** Deleted from this slice: the contract is compiled into
+  skald, there is no `.schema.toml`, and so there is no config file for an editor to validate.
 - The `tools-mcp` wrapper. Deferred; revisit once the CLI has been in use.
 - Publishing anywhere public.
 
-**Verification:** `skald` and `docket` both resolve on a rebuilt machine; `skald docs` prints usable
-guidance; a `.schema.toml` gets completions and hover text in the editor.
+**Verification:** `skald` and `docket` both resolve on a rebuilt machine. `skald docs` is sufficient
+on its own to drive a ticket end to end — check this by handing it to an agent with no other context
+and having it create, refine, advance, and log a ticket.
 
----
+## Log
 
-## Journal
-
-### Intake — "should we build this?"
-
-- **Alignment:** the discoverability half matters more than usual here. After the deny lands, an
-  agent that can't figure out the interface has no fallback — it can't read the directory to work it
-  out. `skald docs` is the recovery path.
-- **AC sanity:** the `docket` alias is cheap now and awkward later (a second name introduced after
-  docs exist means two names in the corpus). Doing it in the same slice as the docs keeps the "one
-  canonical name" rule enforceable.
-- **Recommendation:** go, last in the series.
-- **Human's decision:** pending.
-
-### Build log
-
-- 2026-08-20: Spec authored. Not started.
-
-### Open questions
-
-- None.
-
-### Checkpoints (memory boundaries)
-
-- **PR-up:** —
-- **Merge:** —
+- 2026-08-20: status refining → building. AC authored.
+- 2026-08-20: AC revised alongside the schema decision. The JSON schema deliverable is gone with
+  `.schema.toml` — nothing declarative is left to describe. `skald docs` grew in importance in the
+  same move: with the contract compiled in and unreadable from the filesystem, the built-in docs are
+  now the only way an agent can discover the field set and the two structural rules, so the
+  verification became "an agent can drive a ticket from `docs` alone" rather than "docs print
+  something usable".
