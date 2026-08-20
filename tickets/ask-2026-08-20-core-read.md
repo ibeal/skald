@@ -3,7 +3,7 @@ id: ask-2026-08-20-core-read
 source: plain-ask
 spec: authored here
 mode: direct
-phase: build
+phase: apply
 pr:
 projects:
   - skald
