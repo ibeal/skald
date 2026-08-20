@@ -35,12 +35,18 @@ pub enum Commands {
     },
     /// List the tickets in the store, optionally filtered.
     List {
-        /// Keep only tickets whose `phase` is this.
+        /// Keep only tickets in this status.
         #[arg(long)]
-        phase: Option<String>,
-        /// Keep only tickets whose `projects` include this.
+        status: Option<String>,
+        /// Keep only tickets whose `repos` include this.
         #[arg(long)]
-        project: Option<String>,
+        repo: Option<String>,
+        /// Keep only tickets split from or following up this one.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Keep only parked tickets.
+        #[arg(long)]
+        paused: bool,
         /// Emit JSON instead of a table.
         #[arg(long)]
         json: bool,

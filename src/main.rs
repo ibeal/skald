@@ -1,7 +1,7 @@
 mod cli;
+mod contract;
 mod errors;
 mod list;
-mod schema;
 mod show;
 mod store;
 mod ticket;
@@ -45,11 +45,21 @@ fn run() -> Result<()> {
             }
         }
         Commands::List {
-            phase,
-            project,
+            status,
+            repo,
+            parent,
+            paused,
             json,
         } => {
-            let listing = list::select(&store, &list::Filters { phase, project })?;
+            let listing = list::select(
+                &store,
+                &list::Filters {
+                    status,
+                    repo,
+                    parent,
+                    paused,
+                },
+            )?;
             // A file that could not be read is named on stderr and the rest of the listing still
             // prints. `list` reports; `check` is what fails.
             for error in &listing.unreadable {

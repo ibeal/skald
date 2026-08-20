@@ -18,9 +18,6 @@ pub enum SkaldError {
     StoreNotADirectory(PathBuf),
     TicketNotAFile(PathBuf),
     StoreUnreadable(PathBuf, io::Error),
-    ReadSchema(PathBuf, io::Error),
-    ParseSchema(PathBuf, toml::de::Error),
-    SchemaMissing(PathBuf),
     ReadTicket(PathBuf, io::Error),
     TicketIdNotAName(String),
     UnknownTicket {
@@ -32,9 +29,9 @@ pub enum SkaldError {
         section: String,
         available: Vec<String>,
     },
-    UndeclaredFilterKey {
-        key: String,
-        declared: Vec<String>,
+    UnknownStatus {
+        value: String,
+        permitted: Vec<String>,
     },
 }
 
@@ -82,21 +79,6 @@ impl Display for SkaldError {
                 "cannot read the ticket store at {}: {source}",
                 path.display()
             ),
-            Self::ReadSchema(path, source) => {
-                write!(f, "failed to read {}: {source}", path.display())
-            }
-            Self::ParseSchema(path, source) => {
-                write!(f, "failed to parse {}: {source}", path.display())
-            }
-            // Inventing a schema would make every store agree with itself by construction, which is
-            // the opposite of what a declared contract is for.
-            Self::SchemaMissing(path) => write!(
-                f,
-                "this store has no schema, so its frontmatter contract is undeclared.\n\
-                 Create {} declaring the valid keys, which are required, and each enum's \
-                 permitted values.",
-                path.display()
-            ),
             Self::ReadTicket(path, source) => {
                 write!(f, "failed to read ticket {}: {source}", path.display())
             }
@@ -131,13 +113,12 @@ impl Display for SkaldError {
                 }
                 Ok(())
             }
-            Self::UndeclaredFilterKey { key, declared } => write!(
+            // Naming the permitted set matters more here than anywhere else: this is the enum whose
+            // decoration motivated the tool, so the message has to make the bare value obvious.
+            Self::UnknownStatus { value, permitted } => write!(
                 f,
-                "cannot filter on `{key}`: this store's schema does not declare it. Declared keys: {}",
-                match declared.is_empty() {
-                    true => "<none>".to_string(),
-                    false => declared.join(", "),
-                }
+                "`{value}` is not a status; it is one of: {}",
+                permitted.join(", ")
             ),
         }
     }

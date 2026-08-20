@@ -3,12 +3,10 @@
 use std::path::PathBuf;
 
 use crate::errors::{Result, STORE_VAR, SkaldError};
-use crate::schema::Schema;
 use crate::ticket::Ticket;
 
 pub struct Store {
     pub root: PathBuf,
-    pub schema: Option<Schema>,
 }
 
 /// The result of reading a whole store: the tickets, and the failures that did not stop the rest.
@@ -51,17 +49,7 @@ impl Store {
         std::fs::read_dir(&root)
             .map_err(|source| SkaldError::StoreUnreadable(root.clone(), source))?;
 
-        let schema = Schema::read(&root)?;
-        Ok(Self { root, schema })
-    }
-
-    /// The store's schema, or the one clear error a store without a declared contract earns on an
-    /// operation that needs one.
-    #[allow(dead_code)] // Consumed by `check` and the write commands.
-    pub fn require_schema(&self) -> Result<&Schema> {
-        self.schema
-            .as_ref()
-            .ok_or_else(|| SkaldError::SchemaMissing(Schema::path(&self.root)))
+        Ok(Self { root })
     }
 
     pub fn path_for(&self, id: &str) -> Result<PathBuf> {
@@ -138,19 +126,12 @@ impl Store {
             .collect())
     }
 
-    /// Reject a filter on a key this store's schema does not declare. A store with no schema has no
-    /// declared keys to check against, and reads are allowed to work without one.
-    pub fn check_filter_key(&self, key: &str) -> Result<()> {
-        let Some(schema) = &self.schema else {
-            return Ok(());
-        };
-        match schema.declares(key) {
-            true => Ok(()),
-            false => Err(SkaldError::UndeclaredFilterKey {
-                key: key.to_string(),
-                declared: schema.declared_keys(),
-            }),
-        }
+    /// Whether an id names a ticket in this store. `parent` is validated against this, so a typo in
+    /// a parent reference is catchable rather than a dangling string.
+    #[allow(dead_code)] // `check` validates `parent` with this; `new` refuses to overwrite with it.
+    pub fn contains(&self, id: &str) -> bool {
+        self.path_for(id)
+            .is_ok_and(|path| std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file()))
     }
 }
 
@@ -192,8 +173,10 @@ mod tests {
     use super::{Store, fixture, ticket_id};
     use crate::errors::SkaldError;
 
-    const ONE: &str = "---\nid: one\nphase: build\nprojects:\n  - skald\n---\n\n# One\n";
-    const TWO: &str = "---\nid: two\nphase: review\nprojects:\n  - dotfiles\n---\n\n# Two\n";
+    const ONE: &str =
+        "---\ntitle: One\nstatus: building\nrepos:\n  - skald\n---\n\n## Acceptance criteria\n";
+    const TWO: &str =
+        "---\ntitle: Two\nstatus: reviewing\nrepos:\n  - dotfiles\n---\n\n## Acceptance criteria\n";
 
     fn store() -> (std::path::PathBuf, Store) {
         let root = fixture(
@@ -201,11 +184,8 @@ mod tests {
             &[
                 ("one.md", ONE),
                 ("two.md", TWO),
-                ("_TICKET_TEMPLATE.md", "---\nid:\n---\n"),
-                (
-                    ".schema.toml",
-                    "[keys.id]\ntype = \"string\"\n[keys.phase]\ntype = \"enum\"\nvalues = [\"build\", \"review\"]\n",
-                ),
+                ("_TEMPLATE.md", "---\ntitle:\n---\n"),
+                (".hidden.md", "---\ntitle: hidden\n---\n"),
                 ("notes.txt", "not a ticket"),
             ],
         );
@@ -242,7 +222,7 @@ mod tests {
     #[test]
     fn an_id_that_is_a_path_is_refused_rather_than_followed() {
         let (root, store) = store();
-        for id in ["../secrets", "sub/one", ".schema.toml"] {
+        for id in ["../secrets", "sub/one", ".hidden"] {
             assert!(
                 matches!(store.ticket(id), Err(SkaldError::TicketIdNotAName(_))),
                 "{id}"
@@ -252,29 +232,25 @@ mod tests {
     }
 
     #[test]
-    fn filtering_on_an_undeclared_key_names_the_declared_ones() {
+    fn contains_is_how_a_parent_reference_gets_checked() {
         let (root, store) = store();
-        assert!(store.check_filter_key("phase").is_ok());
-        assert!(matches!(
-            store.check_filter_key("service"),
-            Err(SkaldError::UndeclaredFilterKey { .. })
-        ));
+        assert!(store.contains("one"));
+        assert!(store.contains("one.md"));
+        assert!(!store.contains("nope"));
+        // A traversal attempt is not "present elsewhere", it is not a ticket id at all.
+        assert!(!store.contains("../secrets"));
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn a_store_without_a_schema_still_reads_and_still_filters() {
-        let root = fixture("schemaless", &[("one.md", ONE)]);
+    fn a_non_conforming_store_still_reads() {
+        // The old vocabulary, which every existing store still uses. Migration has to read a ticket
+        // before it can fix one, so reads must never depend on the contract being satisfied.
+        let legacy = "---\nid: one\nphase: build\nprojects:\n  - skald\n---\n\n# One\n";
+        let root = fixture("legacy", &[("one.md", legacy)]);
         let store = Store::at(root.clone()).unwrap();
-        assert!(store.schema.is_none());
-        assert_eq!(store.ticket("one").unwrap().source(), ONE);
-        // No declared contract means no declared keys to reject a filter against.
-        assert!(store.check_filter_key("anything").is_ok());
-        // But an operation that needs the contract says so once, clearly.
-        assert!(matches!(
-            store.require_schema(),
-            Err(SkaldError::SchemaMissing(_))
-        ));
+        assert_eq!(store.ticket("one").unwrap().source(), legacy);
+        assert_eq!(store.tickets().unwrap().tickets.len(), 1);
         std::fs::remove_dir_all(root).unwrap();
     }
 

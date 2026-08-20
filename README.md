@@ -1,11 +1,14 @@
 # skald
 
-`skald` is a CLI for **ticket stores** — directories of markdown tickets whose YAML frontmatter is
-machine-read.
+`skald` is an opinionated CLI for a **ticket store** — a directory of markdown tickets whose job is to
+keep an AI agent's context organized across sessions.
+
+It is not a Linear clone and does not try to mirror one. If a ticket came from somewhere else, `link`
+points back at it; everything else is skald's own small fixed shape.
 
 The name is Old Norse for the poet who kept the saga. Its sibling `rata`
-([ratatoskr](https://github.com/ibeal/ratatoskr)) is named for the *messenger*; naming this one for
-the *chronicler* rather than the chronicle keeps that metaphor consistent.
+([ratatoskr](https://github.com/ibeal/ratatoskr)) is named for the *messenger*; naming this one for the
+*chronicler* rather than the chronicle keeps that metaphor consistent.
 
 Its eventual job is to be the **only** read/write path to a ticket directory: the enforcement
 mechanism is a blanket permission deny on those directories, so an agent that can't express an
@@ -33,68 +36,110 @@ Exactly one store is active per invocation. There is no store list and no `--sto
 per-directory switching (direnv) covers that need.
 
 **If `$SKALD_STORE` is unset, `skald` fails.** It never guesses a default, never falls back to the
-current directory, and never searches upward. Writing a ticket into the wrong store is a worse
-outcome than refusing to run.
+current directory, and never searches upward. Writing a ticket into the wrong store is a worse outcome
+than refusing to run. A symlink is likewise not a way out of the store.
 
 ## Commands
 
 ```text
 skald show <id> [--section NAME] [--json]
-skald list [--phase P] [--project X] [--json]
+skald list [--status S] [--repo R] [--parent ID] [--paused] [--json]
 ```
 
 - `show` with no `--section` prints the whole ticket, byte for byte, so a resuming agent orients in
   one call. `<id>` resolves with or without the `.md` extension.
-- `--section` matches loosely: `Build log`, `build-log`, and `BUILD LOG` are the same section. A
-  section is a heading and everything beneath it, so `--section Journal` returns the whole journal.
-  Headings are ATX only (`## Title`) — a Setext underline is not a section. Every section has a
-  distinct address, so two headings that would collide get `notes`, `notes-2`; an error that lists the
-  available sections names the address whenever it differs from the title.
-- `list` filters on declared frontmatter keys only. `--json` is the complete data; without it you get
-  a compact aligned table.
+- `--section` matches loosely: `Build log`, `build-log`, and `BUILD LOG` are the same section, and `ac`
+  addresses `Acceptance criteria`. A section is a heading and everything beneath it. Headings are ATX
+  only (`## Title`) — a Setext underline is not a section. Every section has a distinct address, so two
+  that would collide become `notes` and `notes-2`.
+- `list` renders `ID · STATUS · TITLE · UPDATED`, marking a parked row with `!`. `--json` is the
+  complete data.
 
-Three names in a store are not tickets: dotfiles (`.schema.toml`) are store metadata, `_`-prefixed
-files are templates, and `README.md` documents the store. Everything else is a ticket even if it is a
-malformed one — a broken ticket that quietly vanished from `list` would be the exact failure this tool
-exists to catch.
+Three names in a store are not tickets: dotfiles are store metadata, `_`-prefixed files are templates,
+and `README.md` documents the store. Everything else is a ticket even if it is a malformed one — a
+broken ticket that quietly vanished from `list` would be the exact failure this tool exists to catch.
+For the same reason, **reads never require a valid ticket**: one unreadable file is named on stderr and
+the rest of the listing still prints.
 
-## The store schema
+## The contract
 
-Each store declares its own frontmatter contract in `.schema.toml` at its root — the valid keys,
-which are required, and the permitted values for each enum field:
+skald owns the field set. There is no schema file, and an unknown key is a violation rather than an
+extension point.
 
-```toml
-#:schema ../schema/skald.schema.json
-
-[keys.phase]
-type = "enum"
-required = true
-allow_empty = false
-values = ["intake", "build", "review", "merged"]
-
-[keys.pr]
-type = "url"
-required = true
+```yaml
+title:                  # required, non-empty
+status:                 # required. refining | building | reviewing | done | cancelled
+paused:                 # optional free text; present means parked
+repos: []               # required, may be empty
+branch:                 # optional
+link:                   # optional — the upstream ticket or issue, if any
+pr:                     # optional
+parent:                 # optional ticket id
+created:                # YYYY-MM-DD, managed by skald
+updated:                # YYYY-MM-DD, managed by skald
 ```
 
-Stores are independent: a personal store's `spec`/`projects` and a work store's `linear`/`services`
-share no configuration and neither knows the other exists. `schema/skald.schema.json` describes the
-file's shape, so an editor carries the contract as hover text where it's authored.
+There is **no `id` field** — the filename is the identity, and a field whose only job is to agree with
+the filename is a field that can disagree with it. There is **no H1** either, for the same reason:
+`title` lives in the frontmatter.
 
-The schema is read from the store root only — there is no upward search, for the same reason there is
-no fallback for the store itself. A store with **no** `.schema.toml` still reads fine; only the
-operations that need a contract report the one clear error.
+`status`, `paused`, `repos`, `pr`, and `parent` are there to be filtered on, `title` to be displayed,
+and the dates to sort by. `branch` and `link` are neither — they're pointers, and they earn their place
+because a resuming agent needs them and prose is a bad home for a pointer.
+
+## Status
+
+```text
+refining ⇄ building ⇄ reviewing ──▶ done
+    ⇅          ⇅          ⇅
+    └──────────┴──────────┴───────▶ cancelled
+```
+
+A status names the phase that **owns** the ticket, and it advances the moment the previous phase
+finishes — not when work starts. `building` means "refining is done and build is the outstanding work",
+whether or not anyone has begun. That's the only reading an agent can apply without guessing at intent.
+
+Movement among the three live states is free in any direction: whether a review finding is a small fix,
+a large hole in the implementation, or a problem with the AC itself is judgment, not something a tool
+can adjudicate. `done` and `cancelled` are terminal — follow-up work is a new ticket with `parent:`
+pointing back.
+
+`paused` is deliberately **not** a status. A `status: paused` would destroy which phase the ticket was
+paused from, which is the same defect as writing `reviewing (pending Ian)`. Blocked is simply a pause
+whose reason is external, so it needs no state of its own.
+
+## Body
+
+Two sections skald owns; everything else is free-form.
+
+```markdown
+## Acceptance criteria
+
+Written while refining. Frozen once the ticket leaves refining.
+
+## Log
+
+- 2026-08-20: status refining → building
+- 2026-08-20: chose bytes-plus-spans; comments and key order survive by construction
+
+## Notes on the fence parser
+```
+
+The acceptance criteria may only be written while `status: refining`, and there is no override flag. To
+change them you move the ticket back to `refining` — which is precisely the act you're performing, and
+it leaves a trace. The log is append-only, because rewriting an audit trail destroys the thing that
+makes it worth reading on resume.
 
 ## Round-tripping is the load-bearing property
 
 A ticket is held as its bytes plus byte spans into them. Reading and rewriting one preserves
-**everything not explicitly modified** — frontmatter comments, key order, blank lines, prose,
-alignment padding, trailing annotations. An agent appending a single Build log line must not silently
-reformat the file it appended to, and the guarantee is a property of the representation rather than
-of careful re-serialization.
+**everything not explicitly modified** — frontmatter comments, key order, blank lines, prose, alignment
+padding, trailing annotations. An agent appending a single log line must not silently reformat the file
+it appended to, and the guarantee is a property of the representation rather than of careful
+re-serialization.
 
-## Status
+## Status of the tool
 
-Read side and the round-trip foundation. `check` (validation), the write commands (`new`, `set`,
+Read side and the round-trip foundation. `check` (validation), the write commands (`new`, `set`, `log`,
 `append`, `set-section`), the `docs` subcommand, and the `docket` alias are separate slices; see
 `tickets/`.

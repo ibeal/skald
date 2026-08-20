@@ -12,6 +12,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use crate::contract::Owned;
 use crate::errors::{Result, SkaldError};
 
 /// A byte range into a ticket's source.
@@ -151,6 +152,13 @@ impl Ticket {
         if wanted.is_empty() {
             return None;
         }
+        // An alias for a section skald owns resolves to that section's real heading, so `ac` and
+        // `Acceptance criteria` are one address. The heading stays readable in the file while the
+        // short form stays typable in a command.
+        let wanted = match Owned::from_address(&wanted) {
+            Some(owned) => slugify(owned.heading()),
+            None => wanted,
+        };
         self.sections.iter().find(|section| section.slug == wanted)
     }
 
@@ -917,6 +925,26 @@ Intro.
         for name in ["", "!!!", "🎉"] {
             assert!(ticket.section(name).is_none(), "{name}");
         }
+    }
+
+    #[test]
+    fn an_owned_sections_alias_resolves_to_its_real_heading() {
+        let ticket = Ticket::parse(
+            "t",
+            "/store/t.md",
+            "## Acceptance criteria\n\n- a criterion\n\n## Log\n\n- an entry\n".to_string(),
+        );
+        for name in ["ac", "AC", "acceptance-criteria", "Acceptance criteria"] {
+            assert_eq!(
+                ticket.section(name).map(|section| section.title.as_str()),
+                Some("Acceptance criteria"),
+                "{name}"
+            );
+        }
+        // An alias resolves to the owned section or to nothing; it never falls through to a
+        // same-named ordinary section.
+        let without = Ticket::parse("t", "/store/t.md", "## Notes\n\nprose\n".to_string());
+        assert!(without.section("ac").is_none());
     }
 
     #[test]
