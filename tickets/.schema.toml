@@ -1,0 +1,71 @@
+#:schema ../schema/skald.schema.json
+
+# The frontmatter contract for skald's own ticket store. It mirrors the shape declared in
+# `workflow/_TICKET_TEMPLATE.md` in the dotfiles repo, because that template is what authors these
+# tickets. The personal and work stores carry their own copies; nothing is shared between stores.
+
+[store]
+template = "_TICKET_TEMPLATE.md"
+
+[keys.id]
+type = "string"
+required = true
+allow_empty = false
+description = "Matches the filename."
+
+[keys.source]
+type = "enum"
+required = true
+allow_empty = false
+values = ["linear", "github-issue", "plain-ask"]
+description = "Where the spec comes from."
+
+[keys.spec]
+type = "string"
+required = true
+description = "A URL, or \"authored here\" for a plain ask."
+
+[keys.mode]
+type = "enum"
+required = true
+allow_empty = false
+values = ["direct", "orchestrated"]
+description = "Task topology: one delivery unit, or a parent coordinating slices."
+
+[keys.phase]
+type = "enum"
+required = true
+allow_empty = false
+values = [
+  "intake",
+  "build",
+  "pr-up",
+  "review",
+  "apply",
+  "sliced",
+  "building",
+  "integration",
+  "merged",
+]
+description = "The workflow phase. Sorted and filtered mechanically, so it takes one bare value — an explanation goes in the Build log."
+
+[keys.pr]
+type = "url"
+required = true
+description = "The pull request URL, or empty. \"There is no PR because …\" is a journal entry, not a value."
+
+[keys.projects]
+type = "list"
+required = true
+description = "Repos or services this work touches."
+
+[keys.created]
+type = "date"
+required = true
+allow_empty = false
+
+[keys.updated]
+type = "date"
+required = true
+allow_empty = false
+description = "Bumped at every phase boundary."
