@@ -19,6 +19,7 @@ pub enum SkaldError {
     TicketNotAFile(PathBuf),
     StoreUnreadable(PathBuf, io::Error),
     ReadTicket(PathBuf, io::Error),
+    WriteTicket(PathBuf, io::Error),
     TicketIdNotAName(String),
     UnknownTicket {
         id: String,
@@ -33,6 +34,21 @@ pub enum SkaldError {
         value: String,
         permitted: Vec<String>,
     },
+    TicketExists(PathBuf),
+    TerminalStatus {
+        current: &'static str,
+        next: &'static str,
+    },
+    CriteriaFrozen {
+        id: String,
+        status: String,
+    },
+    MultiLineValue(&'static str),
+    NewlineInValue(&'static str),
+    EmptyText(&'static str),
+    WouldViolate(Vec<String>),
+    NoText,
+    TextTwice,
 }
 
 impl Display for SkaldError {
@@ -82,10 +98,13 @@ impl Display for SkaldError {
             Self::ReadTicket(path, source) => {
                 write!(f, "failed to read ticket {}: {source}", path.display())
             }
+            Self::WriteTicket(path, source) => {
+                write!(f, "failed to write ticket {}: {source}", path.display())
+            }
             Self::TicketIdNotAName(id) => write!(
                 f,
-                "`{id}` is not a ticket id; an id is a bare filename within the store, \
-                 with no path separators"
+                "`{id}` is not a ticket id. An id is a bare name within the store: no path \
+                 separators, no leading dot, and at most one trailing `.md`"
             ),
             Self::UnknownTicket { id, candidates } => {
                 write!(f, "no ticket `{id}` in the store")?;
@@ -114,12 +133,69 @@ impl Display for SkaldError {
                 Ok(())
             }
             // Naming the permitted set matters more here than anywhere else: this is the enum whose
-            // decoration motivated the tool, so the message has to make the bare value obvious.
+            // decoration motivated the tool, so the message has to make the bare value obvious and
+            // say where the qualifier goes instead.
             Self::UnknownStatus { value, permitted } => write!(
                 f,
-                "`{value}` is not a status; it is one of: {}",
+                "`{value}` is not a status; it is one of: {}\n\
+                 A status takes one bare value. If the state needs explaining, set the bare value \
+                 and put the explanation in the log:\n\
+                 \x20 skald log <id> \"...\"",
                 permitted.join(", ")
             ),
+            Self::TicketExists(path) => write!(
+                f,
+                "{} already exists; refusing to overwrite it",
+                path.display()
+            ),
+            Self::TerminalStatus { current, next } => write!(
+                f,
+                "`{current}` is terminal, so it cannot move to `{next}`.\n\
+                 Follow-up work is a new ticket pointing back at this one:\n\
+                 \x20 skald new <id> --parent <this-id>"
+            ),
+            // The error has to name the way through, because there deliberately is no flag for it:
+            // changing the criteria *is* a return to refining, and saying so leaves a trace that an
+            // override flag would not.
+            Self::CriteriaFrozen { id, status } => write!(
+                f,
+                "the acceptance criteria are frozen outside refining (status: {status}).\n\
+                 A deliberate change is a return to refining:\n\
+                 \x20 skald log {id} \"what you found\"\n\
+                 \x20 skald set {id} --status refining"
+            ),
+            Self::TextTwice => write!(
+                f,
+                "text was given both as an argument and with --stdin; pass exactly one"
+            ),
+            Self::NoText => write!(
+                f,
+                "no text given; pass it as an argument or read it from standard input with --stdin"
+            ),
+            Self::NewlineInValue(key) => write!(
+                f,
+                "`{key}` may not contain a line break; a frontmatter value is one line.\n\
+                 Prose belongs in the log:\n\
+                 \x20 skald log <id> \"...\""
+            ),
+            Self::EmptyText(what) => write!(
+                f,
+                "refusing to write empty {what}. If this was `--stdin`, the redirect read nothing"
+            ),
+            Self::MultiLineValue(key) => write!(
+                f,
+                "`{key}` spans more than one line, so a single value cannot replace it"
+            ),
+            Self::WouldViolate(violations) => {
+                write!(
+                    f,
+                    "refusing to write: the result would not pass `skald check`"
+                )?;
+                for violation in violations {
+                    write!(f, "\n  {violation}")?;
+                }
+                Ok(())
+            }
         }
     }
 }

@@ -57,6 +57,23 @@ pub struct Entry {
     value_span: Span,
 }
 
+impl Entry {
+    /// The byte range a `set` replaces.
+    pub fn value_range(&self) -> Span {
+        self.value_span.clone()
+    }
+
+    /// The whole entry, continuation lines included — what replacing a block list has to replace.
+    pub fn range(&self) -> Span {
+        self.span.clone()
+    }
+
+    /// Where this entry's first line begins, for inserting a key before it.
+    pub fn start(&self) -> usize {
+        self.span.start
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
     /// The key is present with nothing after the colon — an unfilled field, not a mistake.
@@ -162,6 +179,11 @@ impl Ticket {
         self.sections.iter().find(|section| section.slug == wanted)
     }
 
+    /// 1-based line of a section's heading, so a violation in the body is navigable too.
+    pub fn line_of_section(&self, section: &Section) -> usize {
+        line_of(&self.source, section.heading.start)
+    }
+
     /// A section's heading line plus its body, verbatim.
     pub fn section_text(&self, section: &Section) -> &str {
         &self.source[section.heading.start..section.body.end]
@@ -180,6 +202,17 @@ impl Ticket {
     /// does not own, such as a nested mapping.
     pub fn entry_text(&self, entry: &Entry) -> &str {
         &self.source[entry.span.clone()]
+    }
+
+    /// Where a section's heading line starts and ends, for removing the heading itself.
+    pub fn section_heading_range(&self, section: &Section) -> Span {
+        section.heading.clone()
+    }
+
+    /// Where a new frontmatter key goes when no later key exists to anchor it: just before the
+    /// closing delimiter.
+    pub fn frontmatter_insert_position(&self) -> usize {
+        self.frontmatter.inner.end
     }
 
     pub fn entry(&self, key: &str) -> Option<&Entry> {
@@ -249,18 +282,50 @@ impl Ticket {
         edits.replace(section.body.clone(), body.to_string());
     }
 
-    /// Append to the end of a section's body, before the next heading.
+    /// Whether another section follows this one, so a caller can tell whether its body needs to end
+    /// with a separating blank line.
+    pub fn section_is_followed(&self, section: &Section) -> bool {
+        section.body.end < self.source.len()
+    }
+
+    /// The line ending this file uses, so writes extend the file's own convention rather than
+    /// sprinkling `\n` through a CRLF ticket.
+    pub fn newline(&self) -> &'static str {
+        match self.source.contains("\r\n") {
+            true => "\r\n",
+            false => "\n",
+        }
+    }
+
+    /// Append one line to the end of a section's body.
+    ///
+    /// The body span is rewritten rather than inserted into, so the separators come out the same way
+    /// every time: one blank line after the heading, the existing content verbatim, the new line, and
+    /// one blank line before the next heading when there is one. Computing an insertion point instead
+    /// meant the blank line that separated this section from the next got consumed as the one after
+    /// the heading, and the sections ran together.
     pub fn append_to_section_edit<'a>(
         &'a self,
         edits: &mut Edits<'a>,
         section: &Section,
-        text: &str,
+        line: &str,
     ) {
-        // Trailing blank lines separate this section from the next, so an append goes above them
-        // rather than after them — otherwise every append widens the gap by one entry.
-        let body = &self.source[section.body.clone()];
-        let content_end = section.body.start + body.trim_end_matches(['\n', '\r']).len();
-        edits.replace(content_end..content_end, text.to_string());
+        let newline = self.newline();
+        // Verbatim, so existing entries keep their own bytes; only the blank lines around them are
+        // normalized.
+        let existing = self.source[section.body.clone()].trim_matches(['\n', '\r']);
+
+        let mut body = String::from(newline);
+        if !existing.is_empty() {
+            body.push_str(existing);
+            body.push_str(newline);
+        }
+        body.push_str(line.trim());
+        body.push_str(newline);
+        if self.section_is_followed(section) {
+            body.push_str(newline);
+        }
+        edits.replace(section.body.clone(), body);
     }
 }
 

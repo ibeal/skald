@@ -42,9 +42,33 @@ than refusing to run. A symlink is likewise not a way out of the store.
 ## Commands
 
 ```text
+skald new <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+skald set <id> [--title T] [--status S] [--paused R] [--repo R]...
+               [--branch B] [--link U] [--pr U] [--parent ID]
+skald ac   <id> [<text> | --stdin]
+skald log  <id> [<text> | --stdin]
 skald show <id> [--section NAME] [--json]
 skald list [--status S] [--repo R] [--parent ID] [--paused] [--json]
+skald check [--fix]
+skald docs [agent]
 ```
+
+`set` takes several fields at once, which is one write, one `updated` bump, and one log line rather
+than three. An empty string clears any field uniformly: `--paused ""` resumes, `--pr ""` unsets.
+
+`check` exits `2` when the store is invalid and `1` when skald itself failed, so a pre-commit hook can
+tell them apart:
+
+```text
+skald check || exit 1
+```
+
+`--fix` repairs shape only — it never guesses at a status and never renames an old key, because those
+are meaning rather than shape and getting them wrong discards information.
+
+`skald docs` prints the agent-facing guide, and resolves no store on purpose: it is the recovery path
+for an agent that cannot work out the interface, and "the store is not configured" is one of the things
+it explains.
 
 - `show` with no `--section` prints the whole ticket, byte for byte, so a resuming agent orients in
   one call. `<id>` resolves with or without the `.md` extension.
@@ -145,7 +169,28 @@ padding, trailing annotations. An agent appending a single log line must not sil
 it appended to, and the guarantee is a property of the representation rather than of careful
 re-serialization.
 
+## `docket`
+
+`docket` is a supported second name for the same binary — "a register of matters awaiting action",
+for anyone who doesn't want the Norse theming. It lost as the primary name because it shares a
+four-character prefix with `docker`, so shell completion can't disambiguate until the fifth keystroke
+and the two misread for each other at a glance. **`skald` stays canonical** in the docs and in agent
+instructions, so there's one name in the corpus.
+
+## Rules skald enforces
+
+1. Enums take bare values — no qualifier, date, or parenthetical.
+2. `done` and `cancelled` are terminal.
+3. Acceptance criteria may only be written while `refining`. No override flag.
+4. The log is append-only; `skald log` is its only writer.
+5. A status change appends a dated log line by itself.
+6. `created` and `updated` are skald-managed.
+7. Every mutation preserves the rest of the file byte-for-byte.
+8. A mutation that would fail `skald check` is refused instead. skald cannot create a violation it
+   would later report.
+
 ## Status of the tool
 
-Read side and the round-trip foundation. `check` (validation), the write commands (`new`, `set`, `ac`,
-`log`), the `docs` subcommand, and the `docket` alias are separate slices; see `tickets/`.
+Complete: the read side, `check`, the write side, and `docs`. Remaining work is the rollout in the
+dotfiles repo — migrating the existing stores, and the permission deny that makes skald the only path
+in. See `tickets/`.

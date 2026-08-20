@@ -52,13 +52,29 @@ impl Store {
         Ok(Self { root })
     }
 
-    pub fn path_for(&self, id: &str) -> Result<PathBuf> {
+    /// The canonical id for a user-supplied one: the `.md` extension is optional, so both spellings
+    /// name the same ticket.
+    ///
+    /// One suffix, not repeatedly. And the result may not itself end in `.md`, because `z.md.md` would
+    /// otherwise produce a file whose id resolved to a *different* file — the caller means one of two
+    /// things and neither is worth guessing.
+    pub fn normalized_id(&self, id: &str) -> Result<String> {
         let id = id.strip_suffix(".md").unwrap_or(id);
         // An id is a name within one store, so a separator in it is either a mistake or an attempt
         // to reach outside the store. Both deserve the same refusal.
-        if id.is_empty() || id.contains('/') || id.contains('\\') || id.starts_with('.') {
+        if id.is_empty()
+            || id.contains('/')
+            || id.contains('\\')
+            || id.starts_with('.')
+            || id.ends_with(".md")
+        {
             return Err(SkaldError::TicketIdNotAName(id.to_string()));
         }
+        Ok(id.to_string())
+    }
+
+    pub fn path_for(&self, id: &str) -> Result<PathBuf> {
+        let id = self.normalized_id(id)?;
         Ok(self.root.join(format!("{id}.md")))
     }
 
@@ -98,7 +114,7 @@ impl Store {
     /// Load one ticket, resolving the id with or without its `.md` extension.
     pub fn ticket(&self, id: &str) -> Result<Ticket> {
         let path = self.path_for(id)?;
-        let id = id.strip_suffix(".md").unwrap_or(id).to_string();
+        let id = self.normalized_id(id)?;
         // `symlink_metadata` does not follow the link, which is the point: `path_for` refuses an id
         // that names a path out of the store, and a symlink is the other way to leave it.
         match std::fs::symlink_metadata(&path) {
@@ -230,7 +246,8 @@ mod tests {
     #[test]
     fn an_id_that_is_a_path_is_refused_rather_than_followed() {
         let (root, store) = store();
-        for id in ["../secrets", "sub/one", ".hidden"] {
+        // `one.md.md` names one of two things and neither is worth guessing.
+        for id in ["../secrets", "sub/one", ".hidden", "one.md.md"] {
             assert!(
                 matches!(store.ticket(id), Err(SkaldError::TicketIdNotAName(_))),
                 "{id}"
