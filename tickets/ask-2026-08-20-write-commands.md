@@ -1,5 +1,5 @@
 ---
-title: "The write side: new, set, log, append, set-section"
+title: "The write side: new, set, ac, log"
 status: building
 paused:
 repos:
@@ -25,10 +25,13 @@ the log cannot be rewritten.
 skald new <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
 skald set <id> [--title T] [--status S] [--paused R] [--repo R]...
                [--branch B] [--link U] [--pr U] [--parent ID]
-skald log <id> <text>
-skald append <id> --section NAME <text | --stdin>
-skald set-section <id> --section NAME [--stdin]
+skald ac  <id> [<text> | --stdin]
+skald log <id> [<text> | --stdin]
 ```
+
+Four commands, because **the body is closed**: frontmatter, acceptance criteria, and log are the only
+things a ticket has, and each has exactly one writer. There is deliberately no general-purpose section
+writer.
 
 - **`new`** scaffolds a ticket with the full frontmatter shape, fills `created`/`updated`, defaults
   `status` to `refining`, and writes empty `## Acceptance criteria` and `## Log` sections. Refuses to
@@ -38,16 +41,14 @@ skald set-section <id> --section NAME [--stdin]
   `updated` bump**: `set ID --status reviewing --pr <url>`. It rejects any `status` outside the enum,
   **including a valid value with anything appended**. An empty string clears a field uniformly —
   `--paused ""` resumes, `--pr ""` unsets, `--repo ""` empties the list.
-- **`log`** appends a dated bullet to `## Log`, creating the section if absent. This is the outlet
-  that makes the enum rule livable: an agent that wants to record "reviewing, but pending Ian" sets
-  the bare value and logs the qualifier. Enforcement needs somewhere to put the thing it rejected.
-- **`append`** adds to any section verbatim, with no date. `--stdin` for multi-line content, because
-  a Build-log-sized entry through shell quoting is how agents get it wrong.
-- **`set-section --stdin`** replaces a section body wholesale. This is the deliberate escape hatch for
-  content the typed commands cannot express; without it, a blanket deny strands any operation nobody
-  anticipated.
-- Section names resolve case- and punctuation-insensitively, and `ac` addresses
-  `## Acceptance criteria`, because agents will not reproduce a heading exactly.
+- **`ac`** replaces the acceptance criteria wholesale, creating the section if a migrated ticket lacks
+  it. Refused unless `status: refining` — see the rules below.
+- **`log`** appends a dated bullet to `## Log`, creating the section if absent. It is the outlet that
+  makes the enum rule livable: an agent that wants to record "reviewing, but pending Ian" sets the
+  bare value and logs the qualifier. Enforcement needs somewhere to put the thing it rejected.
+- Both `ac` and `log` take `--stdin`, because multi-line content through shell quoting is how agents
+  get it wrong — and with the body closed, `log` inherits the job of holding anything the fixed shape
+  cannot express.
 
 ### The rules skald enforces
 
@@ -56,15 +57,14 @@ skald set-section <id> --section NAME [--stdin]
    follow-up work is a new ticket with `parent:` pointing back. This is the only transition rule —
    movement among `refining`, `building`, and `reviewing` is free in any direction, because a review
    finding a small fix versus a large hole is judgment, not something a tool can adjudicate.
-3. **Acceptance criteria are frozen outside `refining`.** Any write to that section — `append` or
-   `set-section` — is refused unless `status: refining`, with an error that names the way through:
-   move the ticket back to `refining`. There is deliberately **no `--force`**. An override flag
-   becomes muscle memory and leaves no trace, whereas a status round-trip is recorded, bumps
-   `updated`, and appears in the log. This is what makes "agents cannot bend the AC to fit the code"
-   mechanical rather than advisory, while still allowing a deliberate scope change from a real
-   finding.
-4. **The log is append-only.** `set-section` refuses `## Log`; `log` is the only writer. Rewriting an
-   audit trail destroys the thing that makes it worth reading on resume.
+3. **Acceptance criteria are frozen outside `refining`.** `ac` is refused unless `status: refining`,
+   with an error that names the way through: move the ticket back to `refining`. There is deliberately
+   **no `--force`**. An override flag becomes muscle memory and leaves no trace, whereas a status
+   round-trip is recorded, bumps `updated`, and appears in the log. This is what makes "agents cannot
+   bend the AC to fit the code" mechanical rather than advisory, while still allowing a deliberate
+   scope change from a real finding.
+4. **The log is append-only.** `log` is its only writer and nothing can replace it. Rewriting an audit
+   trail destroys the thing that makes it worth reading on resume.
 5. **A status change appends a dated log line automatically** (`status building → refining`). The
    phase history builds itself, so a session that dies mid-build still leaves a trail. Only status
    changes do this — logging every mutation was considered and rejected, because `set pr` lines would
@@ -77,12 +77,17 @@ skald set-section <id> --section NAME [--stdin]
 
 ### Coverage requirement (blocking for the parent's rollout)
 
-Every operation the workflow requires must be performable through these commands with **no direct file
-access**: create a ticket; read the whole thing on resume; write the AC while refining; move status at
-each boundary; record the branch and the PR URL; pause with a reason and resume; append narrative
-progress; and write free-form sections for anything the fixed shape does not cover. **Walk the
-workflow end to end against the built CLI and record the result in this log** — that walkthrough is
-what unblocks the deny, and a gap found here is far cheaper than one found after the deny lands.
+Every operation the workflow requires must be performable through these four commands with **no direct
+file access**: create a ticket; read the whole thing on resume; write the AC while refining; move
+status at each boundary; record the branch and the PR URL; pause with a reason and resume; and append
+narrative progress. **Walk the workflow end to end against the built CLI and record the result in this
+log** — that walkthrough is what unblocks the deny, and a gap found here is far cheaper than one found
+after the deny lands.
+
+Closing the body raises the stakes on this walkthrough specifically. With no general-purpose section
+writer, anything the fixed shape cannot express has to fit in a log entry; if the walkthrough turns up
+something that genuinely does not, that is the signal to reopen the decision — **before** the deny
+lands, not after.
 
 **Explicitly out of scope:**
 
@@ -91,8 +96,9 @@ what unblocks the deny, and a gap found here is far cheaper than one found after
 
 **Verification:** the walkthrough above completes with no direct file access. A ticket mutated by
 every command still passes `skald check` and differs from the original only in the intended lines.
-Writing the AC at `status: building` is refused; the same write after `set --status refining`
-succeeds. `set-section` on the log is refused. A `set --status` leaves a log line without being asked.
+`ac` at `status: building` is refused; the same write after `set --status refining` succeeds. A
+`set --status` leaves a log line without being asked. A `set --status done` followed by any further
+`set --status` is refused.
 
 ## Log
 
@@ -106,6 +112,16 @@ succeeds. `set-section` on the log is refused. A `set --status` leaves a log lin
   "Timeline", and an opt-in flag is one agents forget inconsistently. A separate command for the one
   section skald owns has no ambiguity to get wrong.
 - 2026-08-20: The AC freeze uses the state machine rather than a new mechanism, and deliberately ships
-  without an override. Resolved at the same time: the old open question about whether `append` should
-  create a missing section — yes, create. An agent should not have to know whether the shape happened
-  to include the section it needs.
+  without an override. Resolved at the same time: a missing owned section is created rather than
+  refused. An agent should not have to know whether the shape happened to include the section it
+  needs, and a migrated ticket may lack either one.
+- 2026-08-20: **`append` and `set-section` dropped; the body is closed.** `append` only ever duplicated
+  `log`. Removing `set-section` too is the larger call, because it takes the body from "two known
+  sections plus free-form" to "two sections, full stop" — under a blanket deny, a section nothing can
+  write is a section that does not exist, so keeping free-form sections nominally allowed while
+  deleting every writer would have been a fiction. Evidence it holds: the four tickets in this store
+  use zero free-form top-level sections, their `###` subsections living inside the AC body where the
+  author's structure belongs. The escape hatch the deny made necessary is now `log --stdin` — an
+  unanticipated note belongs in the trail a resuming reader is already looking at. `ac` replaces
+  `set-section` for the one section that needed wholesale editing. Six commands total across the whole
+  tool.

@@ -61,8 +61,9 @@ updated:                # YYYY-MM-DD, skald-managed
 
 - A ticket is one markdown file: YAML frontmatter, then `##`-delimited sections. **No H1** — `title`
   is frontmatter, and a second copy in the body would drift from it.
-- Two sections skald owns: `## Acceptance criteria` (addressable as `ac`) and `## Log`. Any other
-  section is free-form.
+- **The body is closed**, exactly like the field set: `## Acceptance criteria` (addressable as `ac`)
+  and `## Log`, and nothing else at that level. Structure *inside* a section belongs to the author, so
+  the acceptance criteria may carry as many `###` subsections as they like.
 - Parse both halves into a structured value. **Round-tripping must preserve byte-for-byte anything
   not explicitly modified** — frontmatter comments, key order, blank lines, prose, alignment padding.
   This is the property everything else in the series depends on; an agent that appends a log line must

@@ -38,7 +38,9 @@ work out the interface has no fallback, because it cannot read the directory to 
 - `skald docs` printing built-in guidance, as `rata docs` does — so an agent can discover the
   interface from inside a session without a file read. This is the recovery path once the deny is in
   place, so it must cover the whole write side, the status vocabulary, the two structural rules (the
-  AC freeze and the append-only log), and what to do when a write is refused.
+  AC freeze and the append-only log), the fact that the body is closed, and what to do when a write is
+  refused. That last part matters most: with six commands and no escape hatch, an agent that hits a
+  refusal and cannot work out the way through is stuck, and it cannot read the directory to find out.
 - `README.md` for humans; `docs/agent-usage.md` as the copy an agent is pointed at.
 - Document the pre-commit hook invocation for `skald check`.
 

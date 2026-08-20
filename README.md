@@ -110,25 +110,32 @@ whose reason is external, so it needs no state of its own.
 
 ## Body
 
-Two sections skald owns; everything else is free-form.
+The body is **closed**, exactly like the field set: two sections and nothing else at that level.
 
 ```markdown
 ## Acceptance criteria
 
 Written while refining. Frozen once the ticket leaves refining.
 
+### Subsections belong to the author
+
 ## Log
 
 - 2026-08-20: status refining → building
 - 2026-08-20: chose bytes-plus-spans; comments and key order survive by construction
-
-## Notes on the fence parser
 ```
+
+Only the top level is fixed — structure *inside* a section is yours, so the acceptance criteria can
+carry as many `###` subsections as you like.
 
 The acceptance criteria may only be written while `status: refining`, and there is no override flag. To
 change them you move the ticket back to `refining` — which is precisely the act you're performing, and
 it leaves a trace. The log is append-only, because rewriting an audit trail destroys the thing that
 makes it worth reading on resume.
+
+There is no general-purpose section writer, which is why the body can be closed honestly rather than
+nominally: a section nothing can write is a section that doesn't exist. Anything the fixed shape can't
+express goes in a log entry — which is where a reader resuming the ticket is already looking.
 
 ## Round-tripping is the load-bearing property
 
@@ -140,6 +147,5 @@ re-serialization.
 
 ## Status of the tool
 
-Read side and the round-trip foundation. `check` (validation), the write commands (`new`, `set`, `log`,
-`append`, `set-section`), the `docs` subcommand, and the `docket` alias are separate slices; see
-`tickets/`.
+Read side and the round-trip foundation. `check` (validation), the write commands (`new`, `set`, `ac`,
+`log`), the `docs` subcommand, and the `docket` alias are separate slices; see `tickets/`.

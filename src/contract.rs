@@ -200,12 +200,26 @@ impl Status {
     }
 }
 
-/// A section skald owns. Everything else in a ticket body is free-form prose.
+/// The heading level the body's shape is fixed at. Only top-level headings are skald's; the
+/// structure *inside* a section is the author's, so an acceptance-criteria body may carry as many
+/// `###` subsections as it likes.
+pub const OWNED_LEVEL: usize = 2;
+
+/// A section of a ticket body.
+///
+/// The body is **closed**, exactly like the field set: these two sections and nothing else. Each has
+/// exactly one writer, so there is no general-purpose section writer at all.
+///
+/// That is a deliberate narrowing. The alternative was to keep a `set-section` escape hatch so a
+/// blanket deny could not strand an operation nobody anticipated — but an unanticipated note belongs
+/// in the log anyway, which is where a reader resuming the ticket is already looking. A section that
+/// nothing can write is a section that does not exist, so leaving free-form sections nominally
+/// allowed while removing every way to write one would have been a fiction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Owned {
-    /// The contract. Frozen outside [`Status::Refining`].
+    /// The contract. Written wholesale by `skald ac`, and only while [`Status::Refining`].
     AcceptanceCriteria,
-    /// The append-only trail that makes a stopped ticket resumable.
+    /// The append-only trail that makes a stopped ticket resumable. Written only by `skald log`.
     Log,
 }
 
@@ -229,17 +243,20 @@ impl Owned {
         }
     }
 
-    /// Resolve a user-supplied section name to an owned section, if it names one.
+    /// Resolve a section name — a heading, an alias, any spelling that slugifies the same — to the
+    /// section it addresses. `None` means it names no section skald owns, which at
+    /// [`OWNED_LEVEL`] makes it a violation rather than an extension.
     pub fn from_address(slug: &str) -> Option<Self> {
         OWNED_SECTIONS
             .into_iter()
             .find(|owned| owned.aliases().contains(&slug))
     }
 
-    /// Whether a whole-body replacement is allowed.
+    /// Whether the whole body may be replaced.
     ///
-    /// The log is append-only: rewriting an audit trail destroys the property that makes it worth
-    /// reading when resuming, which is the log's entire job.
+    /// True for the acceptance criteria, which are rewritten wholesale while refining. False for the
+    /// log: rewriting an audit trail destroys the property that makes it worth reading on resume,
+    /// which is the log's entire job.
     pub fn allows_replace(self) -> bool {
         !matches!(self, Self::Log)
     }
@@ -315,6 +332,19 @@ mod tests {
         assert_eq!(Status::parse("Reviewing"), None);
         assert_eq!(Status::parse("reviewed"), None);
         assert_eq!(Status::parse(""), None);
+    }
+
+    #[test]
+    fn the_body_is_closed_at_the_owned_level_but_not_below_it() {
+        use super::{OWNED_LEVEL, OWNED_SECTIONS};
+
+        // Two top-level sections, and nothing else is one.
+        assert_eq!(OWNED_SECTIONS.len(), 2);
+        for name in ["notes", "design-notes", "review-findings", "spec"] {
+            assert_eq!(Owned::from_address(name), None, "{name}");
+        }
+        // Structure inside a section belongs to the author, so the closure applies at one level only.
+        assert_eq!(OWNED_LEVEL, 2);
     }
 
     #[test]

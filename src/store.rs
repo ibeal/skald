@@ -154,12 +154,20 @@ fn ticket_id(file_name: &str) -> Option<String> {
 /// A store directory laid out in a temp dir, for tests.
 #[cfg(test)]
 pub fn fixture(label: &str, files: &[(&str, &str)]) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    let unique = SystemTime::now()
+    // A timestamp alone is not unique: the clock's resolution is coarser than the gap between two
+    // parallel test threads reaching this line, so two fixtures would share a directory and whichever
+    // finished first would delete it out from under the other. The counter makes it unique within the
+    // process; the timestamp keeps it unique across runs.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+    let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+    let unique = format!("{stamp}-{sequence}");
     let root = std::env::temp_dir().join(format!("skald-{label}-{unique}"));
     std::fs::create_dir_all(&root).unwrap();
     for (name, contents) in files {
