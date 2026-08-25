@@ -55,6 +55,20 @@ An empty string clears any field: `--paused ""` resumes a parked ticket, `--pr "
 Use `--stdin` for anything multi-line. Shell quoting is the single most common way to write a mangled
 log entry.
 
+**Feed `--stdin` from a file, not a heredoc.** Write the text to a scratch file, then redirect:
+
+```text
+skald log my-ticket --stdin < /path/to/entry.md
+skald ac  my-ticket --stdin < /path/to/criteria.md
+```
+
+`cat <<'EOF' | skald log …` does the same job and is worse in one specific way: a permission
+allowlist entry for `skald` matches a line whose command *is* skald, and that line's command is
+`cat`. A pipeline needs every segment permitted and a heredoc often can't be analysed statically, so
+the agent stops for an approval it did not need. A redirect adds no command, so it still matches.
+
+Most log entries are one line and need none of this — pass the text as an argument.
+
 ## Status
 
 ```text
