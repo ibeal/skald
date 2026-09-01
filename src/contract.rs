@@ -138,20 +138,22 @@ impl Field {
 /// The status vocabulary.
 ///
 /// A status names the phase that **owns** the ticket, and it advances the moment the previous phase
-/// finishes — not when work starts. So `Building` means "refining is done and build is the
+/// finishes — not when work starts. So `Designing` means "refining is done and design is the
 /// outstanding work", whether or not anyone has begun. That is the only reading an agent can apply
 /// without guessing at intent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
     Refining,
+    Designing,
     Building,
     Reviewing,
     Done,
     Cancelled,
 }
 
-pub const STATUSES: [Status; 5] = [
+pub const STATUSES: [Status; 6] = [
     Status::Refining,
+    Status::Designing,
     Status::Building,
     Status::Reviewing,
     Status::Done,
@@ -162,6 +164,7 @@ impl Status {
     pub fn name(self) -> &'static str {
         match self {
             Self::Refining => "refining",
+            Self::Designing => "designing",
             Self::Building => "building",
             Self::Reviewing => "reviewing",
             Self::Done => "done",
@@ -179,7 +182,7 @@ impl Status {
         matches!(self, Self::Done | Self::Cancelled)
     }
 
-    /// Movement among the three live states is free in **any** direction. Whether a review finding is
+    /// Movement among the four live states is free in **any** direction. Whether a review finding is
     /// a small fix (stay in `Reviewing`), a large hole in the implementation (back to `Building`), or
     /// a problem with the AC itself (back to `Refining`) is judgment, and a tool that guessed would
     /// be wrong often enough to be worked around.
@@ -192,7 +195,10 @@ impl Status {
             Self::Refining => {
                 "Working out what this is and what done means. The only status in which the acceptance criteria may be written."
             }
-            Self::Building => "Refining is finished; implementation is the outstanding work.",
+            Self::Designing => {
+                "Refining is finished; architecture and design are the outstanding work."
+            }
+            Self::Building => "Designing is finished; implementation is the outstanding work.",
             Self::Reviewing => "Building is finished; review is the outstanding work.",
             Self::Done => "Finished. Terminal.",
             Self::Cancelled => "Abandoned deliberately. Terminal.",
@@ -300,9 +306,15 @@ mod tests {
 
     #[test]
     fn only_terminal_statuses_refuse_to_move() {
-        for from in [Status::Refining, Status::Building, Status::Reviewing] {
+        for from in [
+            Status::Refining,
+            Status::Designing,
+            Status::Building,
+            Status::Reviewing,
+        ] {
             for to in [
                 Status::Refining,
+                Status::Designing,
                 Status::Building,
                 Status::Reviewing,
                 Status::Done,
@@ -317,7 +329,12 @@ mod tests {
 
         for from in [Status::Done, Status::Cancelled] {
             assert!(from.may_move_to(from), "a no-op set is not a move");
-            for to in [Status::Refining, Status::Building, Status::Reviewing] {
+            for to in [
+                Status::Refining,
+                Status::Designing,
+                Status::Building,
+                Status::Reviewing,
+            ] {
                 assert!(!from.may_move_to(to), "{from:?} -> {to:?}");
             }
         }
@@ -327,6 +344,7 @@ mod tests {
     #[test]
     fn a_decorated_status_is_not_a_status() {
         assert_eq!(Status::parse("reviewing"), Some(Status::Reviewing));
+        assert_eq!(Status::parse("designing"), Some(Status::Designing));
         // The case the whole tool exists for.
         assert_eq!(Status::parse("reviewing (pending Ian)"), None);
         assert_eq!(Status::parse("Reviewing"), None);

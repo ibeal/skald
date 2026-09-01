@@ -116,7 +116,7 @@ pub struct Fields {
     /// What this ticket is, in one line.
     #[arg(long)]
     pub title: Option<String>,
-    /// refining | building | reviewing | done | cancelled
+    /// refining | designing | building | reviewing | done | cancelled
     #[arg(long)]
     pub status: Option<String>,
     /// Why the ticket should not be worked on. Pass "" to resume.

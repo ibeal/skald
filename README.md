@@ -92,7 +92,7 @@ extension point.
 
 ```yaml
 title:                  # required, non-empty
-status:                 # required. refining | building | reviewing | done | cancelled
+status:                 # required. refining | designing | building | reviewing | done | cancelled
 paused:                 # optional free text; present means parked
 repos: []               # required, may be empty
 branch:                 # optional
@@ -114,16 +114,16 @@ because a resuming agent needs them and prose is a bad home for a pointer.
 ## Status
 
 ```text
-refining ⇄ building ⇄ reviewing ──▶ done
+refining ⇄ designing ⇄ building ⇄ reviewing ──▶ done
     ⇅          ⇅          ⇅
     └──────────┴──────────┴───────▶ cancelled
 ```
 
 A status names the phase that **owns** the ticket, and it advances the moment the previous phase
-finishes — not when work starts. `building` means "refining is done and build is the outstanding work",
+finishes — not when work starts. `designing` means "refining is done and design is the outstanding work",
 whether or not anyone has begun. That's the only reading an agent can apply without guessing at intent.
 
-Movement among the three live states is free in any direction: whether a review finding is a small fix,
+Movement among the four live states is free in any direction: whether a review finding is a small fix,
 a large hole in the implementation, or a problem with the AC itself is judgment, not something a tool
 can adjudicate. `done` and `cancelled` are terminal — follow-up work is a new ticket with `parent:`
 pointing back.
@@ -157,6 +157,11 @@ change them you move the ticket back to `refining` — which is precisely the ac
 it leaves a trace. The log is append-only, because rewriting an audit trail destroys the thing that
 makes it worth reading on resume.
 
+`designing` is the architect's planning phase, not a new artifact type. Decisions and the build
+approach go in append-only log entries, so the body remains closed to acceptance criteria and log.
+A controller grants a design worker `skald log` but retains `skald set --status`; the worker can
+record its reasoning but cannot transition itself to building.
+
 There is no general-purpose section writer, which is why the body can be closed honestly rather than
 nominally: a section nothing can write is a section that doesn't exist. Anything the fixed shape can't
 express goes in a log entry — which is where a reader resuming the ticket is already looking.
@@ -188,6 +193,8 @@ instructions, so there's one name in the corpus.
 7. Every mutation preserves the rest of the file byte-for-byte.
 8. A mutation that would fail `skald check` is refused instead. skald cannot create a violation it
    would later report.
+9. New and updated titles may not contain `:`; legacy titles remain readable until deliberately
+   migrated.
 
 ## Status of the tool
 

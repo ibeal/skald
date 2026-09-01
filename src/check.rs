@@ -419,7 +419,8 @@ fn file_date(path: &std::path::Path) -> String {
 /// `Some("")` never comes back. An H1 that is *only* the id carried no title, and inventing
 /// `title: ask-2026-07-23-install-helix` would put a non-title in the field a human reads first. The
 /// heading still goes — it held nothing — and `check` then reports the empty title, which is the
-/// honest outcome and the one that prompts a human to write a real one.
+/// honest outcome and the one that prompts a human to write a real one. A title containing `:` is
+/// likewise left in place: `--fix` must not bypass the write-time title validation.
 fn lift_heading_one(
     ticket: &Ticket,
     edits: &mut crate::ticket::Edits<'_>,
@@ -440,6 +441,10 @@ fn lift_heading_one(
                 .map(str::trim)
                 .unwrap_or(title),
         };
+    }
+
+    if title.contains(':') {
+        return None;
     }
 
     edits.replace(ticket.section_heading_range(section), String::new());
@@ -743,6 +748,16 @@ mod tests {
             1,
             "{changes:?}"
         );
+    }
+
+    #[test]
+    fn fix_does_not_lift_a_colon_title_past_write_time_validation() {
+        let source = "---\nupdated: 2026-08-20\n---\n\n# t — Design: v2\n\n## Acceptance criteria\n\n## Log\n";
+        let (after, changes) = fixed(source);
+        assert!(after.contains("# t — Design: v2"));
+        assert!(!after.contains("title: Design: v2"));
+        assert!(!changes.iter().any(|change| change.contains("lifted")));
+        assert!(kinds(&after).iter().any(|kind| kind.contains("is an H1")));
     }
 
     #[test]

@@ -45,6 +45,7 @@ pub enum SkaldError {
     },
     MultiLineValue(&'static str),
     NewlineInValue(&'static str),
+    TitleContainsColon,
     EmptyText(&'static str),
     WouldViolate(Vec<String>),
     NoText,
@@ -177,6 +178,10 @@ impl Display for SkaldError {
                 "`{key}` may not contain a line break; a frontmatter value is one line.\n\
                  Prose belongs in the log:\n\
                  \x20 skald log <id> \"...\""
+            ),
+            Self::TitleContainsColon => write!(
+                f,
+                "`title` may not contain `:`; titles must stay safe in frontmatter and downstream Markdown tooling"
             ),
             Self::EmptyText(what) => write!(
                 f,

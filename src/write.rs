@@ -65,6 +65,7 @@ impl Changes {
 /// There is no template file: the shape is compiled in, so there is nothing to keep in sync and no
 /// way for a store to drift from the contract it is validated against.
 pub fn new(store: &Store, id: &str, changes: &Changes) -> Result<String> {
+    validate_title(changes.title.as_deref())?;
     // One normalization, shared with every read path, so the id reported back always resolves to the
     // file that was written.
     let id = store.normalized_id(id)?;
@@ -303,6 +304,9 @@ fn write_field<'a>(
     field: Field,
     value: &str,
 ) -> Result<()> {
+    if field == Field::Title {
+        validate_title(Some(value))?;
+    }
     // A newline in a value would end the `key: value` line and leave a bare line in the block, which
     // is neither a key nor a continuation: the parser ignores it, `check` sees nothing wrong, and the
     // frontmatter is quietly not YAML any more.
@@ -328,6 +332,15 @@ fn write_field<'a>(
             };
             edits.replace(insert_position(ticket, field), rendered);
         }
+    }
+    Ok(())
+}
+
+/// Title colons are refused on writes without making historical stores invalid. A legacy ticket
+/// remains readable and checkable; changing its title is the explicit migration boundary.
+fn validate_title(value: Option<&str>) -> Result<()> {
+    if value.is_some_and(|value| value.contains(':')) {
+        return Err(SkaldError::TitleContainsColon);
     }
     Ok(())
 }
@@ -551,6 +564,33 @@ mod tests {
             store.ticket("t").unwrap().scalar("status"),
             Some("refining")
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn title_colons_are_refused_for_new_and_set() {
+        let (root, store) = store();
+        let refused = new(
+            &store,
+            "bad-title",
+            &Changes {
+                title: Some("design: handoff".into()),
+                ..Changes::default()
+            },
+        );
+        assert!(matches!(refused, Err(SkaldError::TitleContainsColon)));
+
+        let ticket = scaffold(&store, "t");
+        let refused = set(
+            &store,
+            &ticket,
+            &Changes {
+                title: Some("design: handoff".into()),
+                ..Changes::default()
+            },
+        );
+        assert!(matches!(refused, Err(SkaldError::TitleContainsColon)));
+        assert_eq!(store.ticket("t").unwrap().scalar("title"), Some("A ticket"));
         std::fs::remove_dir_all(root).unwrap();
     }
 

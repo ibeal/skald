@@ -72,16 +72,17 @@ Most log entries are one line and need none of this — pass the text as an argu
 ## Status
 
 ```text
-refining ⇄ building ⇄ reviewing ──▶ done
+refining ⇄ designing ⇄ building ⇄ reviewing ──▶ done
     ⇅          ⇅          ⇅
     └──────────┴──────────┴───────▶ cancelled
 ```
 
 A status names the phase that **owns** the ticket, and it advances the moment the previous phase
-finishes — *not* when work starts. Set it to `building` as soon as refining is done, even if nobody is
-going to build it today. `building` means "refining is finished and build is the outstanding work".
+finishes — *not* when work starts. Set it to `designing` as soon as refining is done, even if nobody
+is going to design it today. `designing` means "refining is finished and design is the outstanding
+work"; `building` means the design handoff is complete and implementation is outstanding.
 
-Movement among the three live states is free in **any** direction. If review turns up a small fix,
+Movement among the four live states is free in **any** direction. If review turns up a small fix,
 stay in `reviewing`. If it turns up a large hole in the implementation, go back to `building`. If the
 acceptance criteria themselves are wrong, go back to `refining`.
 
@@ -102,6 +103,12 @@ skald log my-ticket "PR is up but waiting on Ian to look before merging"
 
 That is not a workaround. It is the design: enforcement plus somewhere to put the thing being enforced
 away.
+
+### Designing
+
+`designing` is the architect's planning phase, not a new ticket artifact. Record design decisions and
+the build approach in append-only log entries. A controller can grant a design worker `skald log` but
+retain `skald set --status`, so the worker can record reasoning without moving the ticket to building.
 
 ### Pausing
 
@@ -127,7 +134,7 @@ are doing *is* re-refining, so say so:
 skald log my-ticket "the AC assume a sync API; the client is async only"
 skald set my-ticket --status refining
 skald ac  my-ticket --stdin < new-criteria.md
-skald set my-ticket --status building
+skald set my-ticket --status designing
 ```
 
 That leaves a trace. Quietly editing the criteria to match what you built would not, and it is the
