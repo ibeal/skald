@@ -10,7 +10,7 @@ const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("SKALD_GIT_SH
 
 #[derive(Debug, Parser)]
 #[command(name = "skald")]
-#[command(about = "Read and write the tickets in $SKALD_STORE")]
+#[command(about = "Read and write the configured ticket store")]
 #[command(version = VERSION, disable_version_flag = true)]
 pub struct Cli {
     /// Print the version and Git SHA.

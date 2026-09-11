@@ -10,8 +10,8 @@ happened so far.
 
 ## The store
 
-One store per invocation, from `$SKALD_STORE`. If it is unset, skald refuses to run rather than guess;
-that is not a bug to work around, it means the environment is not set up.
+One store per invocation, from `~/.config/skald/config.toml` (`store = "/absolute/path"`) or the
+per-process `$SKALD_STORE` override. If neither is configured, skald refuses to run rather than guess.
 
 ## Reading
 
@@ -184,7 +184,7 @@ skald:
 | `must be a single value` | You passed something list- or map-shaped where one value belongs. |
 | `refusing to write empty …` | Usually a `--stdin` redirect that read nothing. |
 | `already exists` | Ids are permanent; there is no rename. Pick a new one. |
-| `$SKALD_STORE is not set` | The environment is wrong; ask, do not guess a path. |
+| no active ticket store | Configure `store` in `~/.config/skald/config.toml` or set `$SKALD_STORE`; do not guess a path. |
 
 A write is refused only for a violation it would *introduce*. A ticket that is already
 non-conforming — a half-migrated one, say — can still be logged to and advanced, so you are never

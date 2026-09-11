@@ -2,11 +2,13 @@
 
 use std::path::PathBuf;
 
+use crate::config::Config;
 use crate::errors::{Result, STORE_VAR, SkaldError};
 use crate::ticket::Ticket;
 
 pub struct Store {
     pub root: PathBuf,
+    pub webhook_url: Option<String>,
 }
 
 /// The result of reading a whole store: the tickets, and the failures that did not stop the rest.
@@ -17,21 +19,27 @@ pub struct Listing {
 }
 
 impl Store {
-    /// Resolve the store from `$SKALD_STORE`.
+    /// Resolve the store from `$SKALD_STORE` or global configuration.
     ///
     /// There is exactly one active store per invocation, and no fallback of any kind: no default
     /// path, no current directory, no upward search. Writing a ticket into the wrong store is a
     /// worse outcome than refusing to run, and per-directory switching (direnv) already covers the
     /// case a store list would serve.
     pub fn resolve() -> Result<Self> {
-        let raw = match std::env::var_os(STORE_VAR) {
-            Some(raw) if !raw.is_empty() => PathBuf::from(raw),
+        let config = Config::load()?;
+        let raw = match config.store_with(std::env::var_os(STORE_VAR)) {
+            Some(path) if !path.as_os_str().is_empty() => path,
             _ => return Err(SkaldError::StoreUnset),
         };
-        Self::at(raw)
+        Self::at_with_webhook(raw, config.state_change_webhook())
     }
 
+    #[cfg(test)]
     pub fn at(root: PathBuf) -> Result<Self> {
+        Self::at_with_webhook(root, None)
+    }
+
+    fn at_with_webhook(root: PathBuf, webhook_url: Option<String>) -> Result<Self> {
         if !root.is_absolute() {
             return Err(SkaldError::StoreRelative(root));
         }
@@ -49,7 +57,7 @@ impl Store {
         std::fs::read_dir(&root)
             .map_err(|source| SkaldError::StoreUnreadable(root.clone(), source))?;
 
-        Ok(Self { root })
+        Ok(Self { root, webhook_url })
     }
 
     /// The canonical id for a user-supplied one: the `.md` extension is optional, so both spellings

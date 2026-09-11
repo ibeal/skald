@@ -1,5 +1,6 @@
 mod check;
 mod cli;
+mod config;
 mod contract;
 mod docs;
 mod errors;
@@ -7,6 +8,7 @@ mod list;
 mod show;
 mod store;
 mod ticket;
+mod webhook;
 mod write;
 
 use std::process::ExitCode;
@@ -96,6 +98,12 @@ fn run() -> Result<ExitCode> {
         }
         Commands::Set { id, fields } => {
             let ticket = store.ticket(&id)?;
+            let previous_status = ticket.scalar("status").unwrap_or_default().to_string();
+            let previous_paused = ticket.scalar("paused");
+            let next_status = fields.status.as_deref().unwrap_or(&previous_status);
+            let next_paused = fields.paused.as_deref().or(previous_paused);
+            let previous_derived = webhook::derived_status(&previous_status, previous_paused);
+            let next_derived = webhook::derived_status(next_status, next_paused);
             let applied = write::set(&store, &ticket, &changes(fields))?;
             match applied.is_empty() {
                 // Silence would read as success, and a caller that mistyped a flag deserves to know
@@ -106,6 +114,15 @@ fn run() -> Result<ExitCode> {
                         println!("{line}");
                     }
                 }
+            }
+            if previous_derived != next_derived {
+                let updated = store.ticket(&id)?;
+                webhook::emit(
+                    &updated,
+                    &previous_derived,
+                    &next_derived,
+                    store.webhook_url.as_deref(),
+                );
             }
         }
         Commands::Ac { id, text, stdin } => {

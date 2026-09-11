@@ -24,20 +24,23 @@ nix profile install .#
 nix develop          # dev shell
 ```
 
-## The active store
+## Global configuration
 
-The store is `$SKALD_STORE`, an **absolute** path to a ticket directory:
+Skald reads an optional `~/.config/skald/config.toml` (or
+`$XDG_CONFIG_HOME/skald/config.toml`) for global defaults:
 
-```nu
-$env.SKALD_STORE = "/Users/you/dotfiles/agents/tickets"
+```toml
+store = "/Users/you/.skald/tickets"
+state_change_webhook = "https://example.com/skald-events"
 ```
 
-Exactly one store is active per invocation. There is no store list and no `--store` flag —
-per-directory switching (direnv) covers that need.
+`store` is required through either this file or `$SKALD_STORE`; it must be an absolute path.
+`SKALD_STORE` and `STATE_CHANGE_WEBHOOK` override their configuration-file counterparts for one
+process. An empty `STATE_CHANGE_WEBHOOK` disables webhook delivery for that process.
 
-**If `$SKALD_STORE` is unset, `skald` fails.** It never guesses a default, never falls back to the
-current directory, and never searches upward. Writing a ticket into the wrong store is a worse outcome
-than refusing to run. A symlink is likewise not a way out of the store.
+Exactly one store is active per invocation. There is no store list and no `--store` flag. If neither
+configuration source supplies a store, skald fails rather than guessing. A symlink is likewise not a
+way out of the store.
 
 ## Commands
 
@@ -62,6 +65,14 @@ tell them apart:
 ```text
 skald check || exit 1
 ```
+
+## State-change webhook
+
+Set `state_change_webhook` in the global config (or use `STATE_CHANGE_WEBHOOK` for one process) to
+receive best-effort JSON notifications when a ticket's visible state changes. A non-empty `paused` reason derives the visible state `paused`;
+changing that reason while it remains non-empty does not emit another event. Delivery is attempted
+three times after the ticket write commits, using one stable UUID event id across those attempts.
+Webhook failures warn on stderr but do not roll back the ticket write.
 
 `--fix` repairs shape only — it never guesses at a status and never renames an old key, because those
 are meaning rather than shape and getting them wrong discards information.

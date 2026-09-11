@@ -12,6 +12,8 @@ pub const STORE_VAR: &str = "SKALD_STORE";
 pub enum SkaldError {
     Io(io::Error),
     SerializeJson(serde_json::Error),
+    ConfigRead(PathBuf, io::Error),
+    ConfigParse(PathBuf, toml::de::Error),
     StoreUnset,
     StoreRelative(PathBuf),
     StoreMissing(PathBuf),
@@ -57,13 +59,18 @@ impl Display for SkaldError {
         match self {
             Self::Io(source) => write!(f, "{source}"),
             Self::SerializeJson(source) => write!(f, "failed to serialize JSON: {source}"),
+            Self::ConfigRead(path, source) => {
+                write!(f, "failed to read config {}: {source}", path.display())
+            }
+            Self::ConfigParse(path, source) => {
+                write!(f, "invalid config {}: {source}", path.display())
+            }
             // Guessing a store means writing a ticket into the wrong saga, which is worse than not
             // running at all. So the message teaches the fix instead of picking one.
             Self::StoreUnset => write!(
                 f,
-                "${STORE_VAR} is not set, so there is no active ticket store.\n\
-                 Set it to the absolute path of a ticket directory, e.g.\n\
-                 \x20 export {STORE_VAR}=/path/to/tickets\n\
+                "there is no active ticket store.\n\
+                 Set `store` to an absolute path in ~/.config/skald/config.toml, or set {STORE_VAR}.\n\
                  skald never guesses a default and never falls back to the current directory."
             ),
             Self::StoreRelative(path) => write!(
