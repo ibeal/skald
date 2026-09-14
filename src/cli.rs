@@ -70,6 +70,13 @@ pub enum Commands {
         #[command(flatten)]
         fields: Fields,
     },
+    /// Create a ticket once, or return the ticket id already claimed by this id.
+    Claim {
+        /// Canonical ticket id; callers must derive this deterministically from the thing claimed.
+        id: String,
+        #[command(flatten)]
+        fields: Fields,
+    },
     /// Change a ticket's fields. Several at once land in one write.
     Set {
         id: String,

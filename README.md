@@ -46,6 +46,7 @@ way out of the store.
 
 ```text
 skald new <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+skald claim <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
 skald set <id> [--title T] [--status S] [--paused R] [--repo R]...
                [--branch B] [--link U] [--pr U] [--parent ID]
 skald ac   <id> [<text> | --stdin]
@@ -58,6 +59,10 @@ skald docs [agent]
 
 `set` takes several fields at once, which is one write, one `updated` bump, and one log line rather
 than three. An empty string clears any field uniformly: `--paused ""` resumes, `--pr ""` unsets.
+
+`claim` is the race-safe creation path for a queue. Give it an id deterministically derived from the
+thing being claimed (for example, a canonical PR); it prints `created <id>` for the winner or
+`existing <id>` for every loser, without changing the existing ticket.
 
 `check` exits `2` when the store is invalid and `1` when skald itself failed, so a pre-commit hook can
 tell them apart:

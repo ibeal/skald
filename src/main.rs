@@ -96,6 +96,10 @@ fn run() -> Result<ExitCode> {
             let created = write::new(&store, &id, &changes(fields))?;
             println!("created {created}");
         }
+        Commands::Claim { id, fields } => match write::claim(&store, &id, &changes(fields))? {
+            write::Claim::Created(id) => println!("created {id}"),
+            write::Claim::Existing(id) => println!("existing {id}"),
+        },
         Commands::Set { id, fields } => {
             let ticket = store.ticket(&id)?;
             let previous_status = ticket.scalar("status").unwrap_or_default().to_string();

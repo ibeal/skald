@@ -8,6 +8,8 @@
 //! byte-for-byte. And every mutation is checked against the contract before it lands: skald must not
 //! be able to create a violation it would later report.
 
+use std::io::Write;
+
 use crate::check;
 use crate::contract::{FIELDS, Field, Owned, STATUSES, Status};
 use crate::errors::{Result, SkaldError};
@@ -35,6 +37,13 @@ pub struct Changes {
     pub link: Option<String>,
     pub pr: Option<String>,
     pub parent: Option<String>,
+}
+
+/// The outcome of atomically claiming a deterministic ticket id.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Claim {
+    Created(String),
+    Existing(String),
 }
 
 impl Changes {
@@ -73,7 +82,32 @@ pub fn new(store: &Store, id: &str, changes: &Changes) -> Result<String> {
     if path.exists() {
         return Err(SkaldError::TicketExists(path));
     }
+    let ticket = scaffold(store, &id, &path, changes)?;
+    commit_new(&ticket)?;
+    Ok(ticket.id)
+}
 
+/// Claim a deterministic ticket id without changing a ticket another caller already claimed.
+///
+/// This is intentionally narrower than `new`: it gives a concurrent queue one canonical identity,
+/// returning it whether this caller created the ticket or lost the exclusive create race.
+pub fn claim(store: &Store, id: &str, changes: &Changes) -> Result<Claim> {
+    let id = store.normalized_id(id)?;
+    let path = store.path_for(&id)?;
+    if path.exists() {
+        return Ok(Claim::Existing(id));
+    }
+
+    validate_title(changes.title.as_deref())?;
+    let ticket = scaffold(store, &id, &path, changes)?;
+    match commit_new(&ticket) {
+        Ok(()) => Ok(Claim::Created(ticket.id)),
+        Err(SkaldError::TicketExists(_)) => Ok(Claim::Existing(id)),
+        Err(error) => Err(error),
+    }
+}
+
+fn scaffold(store: &Store, id: &str, path: &std::path::Path, changes: &Changes) -> Result<Ticket> {
     let today = today();
     let mut body = String::from("---\n");
     for field in FIELDS {
@@ -107,10 +141,9 @@ pub fn new(store: &Store, id: &str, changes: &Changes) -> Result<String> {
         body.push_str(&format!("\n## {}\n", owned.heading()));
     }
 
-    let ticket = Ticket::parse(id, &path, body);
+    let ticket = Ticket::parse(id, path, body);
     guard(store, None, &ticket)?;
-    commit(&ticket)?;
-    Ok(ticket.id)
+    Ok(ticket)
 }
 
 /// Apply field changes in one atomic write, with one `updated` bump and — when the status moved — one
@@ -441,9 +474,49 @@ fn commit(ticket: &Ticket) -> Result<()> {
     std::fs::rename(&temp, &ticket.path).map_err(fail)
 }
 
+/// Install a fully-rendered ticket exactly once. Linking a private sibling temp file is an atomic
+/// no-replace operation, unlike the usual rename used for updates.
+fn commit_new(ticket: &Ticket) -> Result<()> {
+    let file_name = ticket
+        .path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("ticket paths always have UTF-8 file names");
+    let temp = ticket
+        .path
+        .with_file_name(format!(".{file_name}.{}.skald-tmp", uuid::Uuid::new_v4()));
+    let fail = |source: std::io::Error| SkaldError::WriteTicket(ticket.path.clone(), source);
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)
+        .map_err(fail)?;
+    file.write_all(ticket.source().as_bytes()).map_err(fail)?;
+    file.sync_all().map_err(fail)?;
+    drop(file);
+
+    match std::fs::hard_link(&temp, &ticket.path) {
+        Ok(()) => {
+            // The claim is already committed. A failed cleanup leaves an ignored dotfile, but must
+            // not turn a successful claim into an ambiguous error for the caller.
+            let _ = std::fs::remove_file(&temp);
+            Ok(())
+        }
+        Err(source) if source.kind() == std::io::ErrorKind::AlreadyExists => {
+            let _ = std::fs::remove_file(&temp);
+            Err(SkaldError::TicketExists(ticket.path.clone()))
+        }
+        Err(source) => {
+            let _ = std::fs::remove_file(&temp);
+            Err(fail(source))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Changes, log, new, set, set_criteria, today};
+    use super::{Changes, Claim, claim, log, new, set, set_criteria, today};
     use crate::check;
     use crate::errors::SkaldError;
     use crate::store::{Store, fixture};
@@ -495,7 +568,64 @@ mod tests {
         let (root, store) = store();
         scaffold(&store, "t");
         let again = new(&store, "t", &Changes::default());
-        assert!(matches!(again, Err(SkaldError::TicketExists(_))));
+        assert!(
+            matches!(again, Err(SkaldError::TicketExists(_))),
+            "{again:?}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn claim_is_atomic_and_loser_gets_the_existing_identity() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let (root, _) = store();
+        let barrier = Arc::new(Barrier::new(2));
+        let mut attempts = Vec::new();
+        for title in ["first", "second"] {
+            let root = root.clone();
+            let barrier = barrier.clone();
+            attempts.push(thread::spawn(move || {
+                let store = Store::at(root).unwrap();
+                barrier.wait();
+                (
+                    title,
+                    claim(
+                        &store,
+                        "canonical-pr",
+                        &Changes {
+                            title: Some(title.into()),
+                            ..Changes::default()
+                        },
+                    )
+                    .unwrap(),
+                )
+            }));
+        }
+
+        let attempts: Vec<_> = attempts
+            .into_iter()
+            .map(|attempt| attempt.join().unwrap())
+            .collect();
+        let created: Vec<_> = attempts
+            .iter()
+            .filter_map(|(title, outcome)| match outcome {
+                Claim::Created(id) => Some((*title, id)),
+                Claim::Existing(id) => {
+                    assert_eq!(id, "canonical-pr");
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].1, "canonical-pr");
+
+        let store = Store::at(root.clone()).unwrap();
+        assert_eq!(
+            store.ticket("canonical-pr").unwrap().scalar("title"),
+            Some(created[0].0)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 

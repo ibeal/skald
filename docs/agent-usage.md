@@ -33,13 +33,14 @@ and less error-prone than three narrower reads.
 
 ```text
 skald new <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+skald claim <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
 skald set <id> [--title T] [--status S] [--paused R] [--repo R]...
                [--branch B] [--link U] [--pr U] [--parent ID]
 skald ac  <id> [<text> | --stdin]
 skald log <id> [<text> | --stdin]
 ```
 
-Four write commands, and there are no others. A ticket is frontmatter, acceptance criteria, and a log;
+Five write commands, and there are no others. A ticket is frontmatter, acceptance criteria, and a log;
 each has exactly one writer. If you are looking for a way to add a section, there isn't one — see
 *The body is closed* below.
 
@@ -51,6 +52,10 @@ skald set my-ticket --status reviewing --branch my-branch --pr https://github.co
 ```
 
 An empty string clears any field: `--paused ""` resumes a parked ticket, `--pr ""` unsets a PR.
+
+Use `claim` when concurrent callers must share one deterministic ticket identity, such as a review
+queue keyed by a canonical PR. It prints `created <id>` for the winner or `existing <id>` for a
+loser, and a loser never changes the ticket it found.
 
 Use `--stdin` for anything multi-line. Shell quoting is the single most common way to write a mangled
 log entry.
