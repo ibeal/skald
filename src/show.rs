@@ -134,6 +134,16 @@ projects:
     }
 
     #[test]
+    fn complexity_and_provider_render_in_frontmatter_when_present() {
+        let source = "---\ntitle: A ticket\nstatus: building\nrepos:\n  - skald\ncomplexity: 1\nprovider: openai\nupdated: 2026-08-20\n---\n\n## Log\n";
+        let ticket = Ticket::parse("t", "/store/t.md", source.to_string());
+        assert_eq!(render_text(&ticket, None).unwrap(), source);
+        let json = render_json(&ticket, None).unwrap();
+        assert_eq!(json["frontmatter"]["complexity"], "1");
+        assert_eq!(json["frontmatter"]["provider"], "openai");
+    }
+
+    #[test]
     fn showing_a_section_returns_its_heading_and_body_verbatim() {
         let text = render_text(&ticket(), Some("build-log")).unwrap();
         assert_eq!(text, "### Build log\n\n- 2026-08-20: first.\n");

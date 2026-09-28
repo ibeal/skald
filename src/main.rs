@@ -154,6 +154,8 @@ fn changes(fields: cli::Fields) -> write::Changes {
         link: fields.link,
         pr: fields.pr,
         parent: fields.parent,
+        complexity: fields.complexity,
+        provider: fields.provider,
     }
 }
 

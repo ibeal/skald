@@ -71,14 +71,43 @@ pub fn render_json(tickets: &[Ticket]) -> Json {
         tickets
             .iter()
             .map(|ticket| {
+                let mut frontmatter = match frontmatter_json(ticket) {
+                    Json::Object(map) => map,
+                    _ => unreachable!("frontmatter_json always returns an object"),
+                };
+                // `complexity`/`provider` are model-selection hints a consumer reads without
+                // checking whether the ticket happens to carry them: guaranteed present, typed, and
+                // `null` rather than absent when unset, unlike a field this store simply requires.
+                frontmatter.insert("complexity".to_string(), complexity_json(ticket));
+                frontmatter.insert("provider".to_string(), provider_json(ticket));
                 json!({
                     "id": ticket.id,
                     "path": ticket.path.display().to_string(),
-                    "frontmatter": frontmatter_json(ticket),
+                    "frontmatter": frontmatter,
                 })
             })
             .collect(),
     )
+}
+
+/// `complexity` as a JSON number, or `null` when absent, empty, or unparseable. skald applies no
+/// default here either — unset stays unset.
+fn complexity_json(ticket: &Ticket) -> Json {
+    ticket
+        .scalar(Field::Complexity.key())
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(Json::from)
+        .unwrap_or(Json::Null)
+}
+
+/// `provider` as a JSON string, or `null` when absent or empty.
+fn provider_json(ticket: &Ticket) -> Json {
+    ticket
+        .scalar(Field::Provider.key())
+        .filter(|value| !value.is_empty())
+        .map(|value| Json::String(value.to_string()))
+        .unwrap_or(Json::Null)
 }
 
 /// A compact aligned table: `ID · STATUS · TITLE · UPDATED`.
@@ -143,7 +172,7 @@ fn pad(row: &[String; 4], widths: &[usize; 4]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Filters, render_table, select};
+    use super::{Filters, render_json, render_table, select};
     use crate::errors::SkaldError;
     use crate::store::{Store, fixture};
 
@@ -267,6 +296,40 @@ mod tests {
              two    refining !  Validate a store             2026-08-19\n\
              \n! = paused; `skald show <id>` for the reason\n"
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn json_carries_complexity_as_a_number_and_provider_as_a_string_or_null() {
+        let root = fixture(
+            "list-complexity",
+            &[
+                (
+                    "with.md",
+                    "---\ntitle: With\nstatus: building\nrepos:\n  - skald\ncomplexity: 2\nprovider: anthropic\nupdated: 2026-08-20\n---\n\n## Log\n",
+                ),
+                (
+                    "without.md",
+                    "---\ntitle: Without\nstatus: building\nrepos:\n  - skald\nupdated: 2026-08-20\n---\n\n## Log\n",
+                ),
+            ],
+        );
+        let store = Store::at(root.clone()).unwrap();
+        let tickets = select(&store, &Filters::default()).unwrap().tickets;
+        let json = render_json(&tickets);
+        let by_id = |id: &str| {
+            json.as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == id)
+                .unwrap()
+        };
+
+        assert_eq!(by_id("with")["frontmatter"]["complexity"], 2);
+        assert_eq!(by_id("with")["frontmatter"]["provider"], "anthropic");
+        // Absent entirely from the file still yields both keys, typed, rather than missing.
+        assert!(by_id("without")["frontmatter"]["complexity"].is_null());
+        assert!(by_id("without")["frontmatter"]["provider"].is_null());
         std::fs::remove_dir_all(root).unwrap();
     }
 

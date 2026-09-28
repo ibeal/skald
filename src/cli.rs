@@ -144,4 +144,12 @@ pub struct Fields {
     /// The ticket this one was split from or follows up.
     #[arg(long)]
     pub parent: Option<String>,
+    /// How demanding the work is, 0 (trivial) - 3 (hardest). Pass "" to clear. skald applies no
+    /// default.
+    #[arg(long)]
+    pub complexity: Option<String>,
+    /// Which provider should run the work: anthropic | openai. Pass "" to clear. skald applies no
+    /// default.
+    #[arg(long)]
+    pub provider: Option<String>,
 }
