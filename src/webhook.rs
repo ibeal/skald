@@ -17,7 +17,7 @@ pub fn emit(ticket: &Ticket, previous_status: &str, status: &str, url: Option<&s
     };
     let payload = payload(&ticket.id, previous_status, status);
 
-    if let Some(error) = deliver(&url, &payload) {
+    if let Some(error) = deliver(url, &payload) {
         eprintln!(
             "warning: state-change webhook delivery failed after {ATTEMPTS} attempts: {error}"
         );

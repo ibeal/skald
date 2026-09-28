@@ -8,7 +8,9 @@
 use std::fmt::{self, Display};
 use std::path::PathBuf;
 
-use crate::contract::{FIELDS, Field, OWNED_LEVEL, OWNED_SECTIONS, Owned, STATUSES, Shape, Status};
+use crate::contract::{
+    FIELDS, Field, OWNED_LEVEL, OWNED_SECTIONS, Owned, PROVIDERS, STATUSES, Shape, Status,
+};
 use crate::errors::Result;
 use crate::store::Store;
 use crate::ticket::{Ticket, Value};
@@ -32,6 +34,10 @@ pub enum Kind {
     EmptyValue(&'static str),
     /// The case the whole tool exists for: a value outside the enum, decoration included.
     BadStatus(String),
+    /// `complexity` outside the `0`–3 range, or not an integer at all.
+    BadComplexity(String),
+    /// `provider` outside the vocabulary in [`PROVIDERS`].
+    BadProvider(String),
     BadDate {
         key: &'static str,
         value: String,
@@ -77,6 +83,18 @@ impl Display for Kind {
                 STATUSES
                     .iter()
                     .map(|status| status.name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::BadComplexity(value) => {
+                write!(f, "`complexity` is `{value}`, which is not an integer 0–3")
+            }
+            Self::BadProvider(value) => write!(
+                f,
+                "`provider` is `{value}`, which is not one of: {}",
+                PROVIDERS
+                    .iter()
+                    .map(|provider| provider.name())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -224,8 +242,19 @@ fn check_shape(store: &Store, ticket: &Ticket, field: Field, _line: usize) -> Op
         Shape::TicketId => {
             (!store.contains(value)).then(|| Kind::DanglingParent(value.to_string()))
         }
+        Shape::Complexity => {
+            (!is_complexity(value)).then(|| Kind::BadComplexity(value.to_string()))
+        }
+        Shape::Provider => crate::contract::Provider::parse(value)
+            .is_none()
+            .then(|| Kind::BadProvider(value.to_string())),
         Shape::List => None,
     }
+}
+
+/// An integer `0`–3, with no decoration — the same discipline as [`is_date`].
+pub fn is_complexity(value: &str) -> bool {
+    matches!(value, "0" | "1" | "2" | "3")
 }
 
 fn check_body(ticket: &Ticket) -> impl Iterator<Item = (Option<usize>, Kind)> + use<> {
@@ -622,6 +651,50 @@ mod tests {
         let found = kinds(&GOOD.replace("repos:\n  - skald", "repos: skald"));
         assert_eq!(found.len(), 1);
         assert!(found[0].contains("`repos` must be a list"));
+    }
+
+    #[test]
+    fn a_ticket_without_complexity_or_provider_still_passes_unchanged() {
+        // No migration: an optional field a legacy ticket never had is not a violation.
+        assert!(kinds(GOOD).is_empty());
+        assert!(!GOOD.contains("complexity"));
+        assert!(!GOOD.contains("provider"));
+    }
+
+    #[test]
+    fn complexity_accepts_only_an_integer_zero_to_three() {
+        for value in ["0", "1", "2", "3"] {
+            let found = kinds(&GOOD.replace("branch:", &format!("complexity: {value}\nbranch:")));
+            assert!(found.is_empty(), "{value}: {found:?}");
+        }
+        for value in ["4", "-1", "2.5", "high", ""] {
+            if value.is_empty() {
+                // An empty value is unset, not a violation.
+                let found = kinds(&GOOD.replace("branch:", "complexity:\nbranch:"));
+                assert!(found.is_empty(), "{found:?}");
+                continue;
+            }
+            let found = kinds(&GOOD.replace("branch:", &format!("complexity: {value}\nbranch:")));
+            assert_eq!(found.len(), 1, "{value}: {found:?}");
+            assert!(
+                found[0].contains("not an integer 0\u{2013}3"),
+                "{value}: {found:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_accepts_only_the_known_vocabulary() {
+        for value in ["anthropic", "openai"] {
+            let found = kinds(&GOOD.replace("branch:", &format!("provider: {value}\nbranch:")));
+            assert!(found.is_empty(), "{value}: {found:?}");
+        }
+        let found = kinds(&GOOD.replace("branch:", "provider: azure\nbranch:"));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("not one of: anthropic, openai"),
+            "{found:?}"
+        );
     }
 
     #[test]

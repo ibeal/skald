@@ -37,6 +37,8 @@ pub struct Changes {
     pub link: Option<String>,
     pub pr: Option<String>,
     pub parent: Option<String>,
+    pub complexity: Option<String>,
+    pub provider: Option<String>,
 }
 
 /// The outcome of atomically claiming a deterministic ticket id.
@@ -61,6 +63,8 @@ impl Changes {
         push(Field::Link, &self.link);
         push(Field::Pr, &self.pr);
         push(Field::Parent, &self.parent);
+        push(Field::Complexity, &self.complexity);
+        push(Field::Provider, &self.provider);
         pairs
     }
 
@@ -556,6 +560,11 @@ mod tests {
         // Defaults: refining, and both owned sections present.
         assert_eq!(ticket.scalar("status"), Some("refining"));
         assert_eq!(ticket.scalar("created"), Some(today().as_str()));
+        // Present, empty, and applying no default — the same shape as every other optional field.
+        assert!(ticket.entry("complexity").is_some());
+        assert_eq!(ticket.scalar("complexity"), None);
+        assert!(ticket.entry("provider").is_some());
+        assert_eq!(ticket.scalar("provider"), None);
         assert!(ticket.section("ac").is_some());
         assert!(ticket.section("log").is_some());
         // No H1, and no template file to drift from the contract.
@@ -1109,6 +1118,83 @@ mod tests {
         assert_eq!(resumed.scalar("paused"), None);
         // Resuming keeps the phase, which is why pause is a field rather than a status.
         assert_eq!(resumed.scalar("status"), Some("refining"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn complexity_and_provider_set_and_clear_like_every_other_field() {
+        let (root, store) = store();
+        let ticket = scaffold(&store, "t");
+        set(
+            &store,
+            &ticket,
+            &Changes {
+                complexity: Some("2".into()),
+                provider: Some("anthropic".into()),
+                ..Changes::default()
+            },
+        )
+        .unwrap();
+        let set_ticket = store.ticket("t").unwrap();
+        assert_eq!(set_ticket.scalar("complexity"), Some("2"));
+        assert_eq!(set_ticket.scalar("provider"), Some("anthropic"));
+        assert!(check::inspect(&store, &set_ticket).is_empty());
+
+        set(
+            &store,
+            &set_ticket,
+            &Changes {
+                complexity: Some(String::new()),
+                provider: Some(String::new()),
+                ..Changes::default()
+            },
+        )
+        .unwrap();
+        let cleared = store.ticket("t").unwrap();
+        assert_eq!(cleared.scalar("complexity"), None);
+        assert_eq!(cleared.scalar("provider"), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_write_that_would_introduce_a_bad_complexity_or_provider_is_refused() {
+        let (root, store) = store();
+        let ticket = scaffold(&store, "t");
+
+        let refused = set(
+            &store,
+            &ticket,
+            &Changes {
+                complexity: Some("5".into()),
+                ..Changes::default()
+            },
+        );
+        assert!(matches!(refused, Err(SkaldError::WouldViolate(_))));
+        assert_eq!(store.ticket("t").unwrap().scalar("complexity"), None);
+
+        let refused = set(
+            &store,
+            &ticket,
+            &Changes {
+                provider: Some("azure".into()),
+                ..Changes::default()
+            },
+        );
+        assert!(matches!(refused, Err(SkaldError::WouldViolate(_))));
+        assert_eq!(store.ticket("t").unwrap().scalar("provider"), None);
+
+        // `new` refuses too — it has no prior version to compare against.
+        let refused = new(
+            &store,
+            "u",
+            &Changes {
+                title: Some("U".into()),
+                complexity: Some("9".into()),
+                ..Changes::default()
+            },
+        );
+        assert!(matches!(refused, Err(SkaldError::WouldViolate(_))));
+        assert!(!store.contains("u"));
         std::fs::remove_dir_all(root).unwrap();
     }
 

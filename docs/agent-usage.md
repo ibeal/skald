@@ -33,9 +33,12 @@ and less error-prone than three narrower reads.
 
 ```text
 skald new <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+              [--complexity 0-3] [--provider anthropic|openai]
 skald claim <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+                [--complexity 0-3] [--provider anthropic|openai]
 skald set <id> [--title T] [--status S] [--paused R] [--repo R]...
                [--branch B] [--link U] [--pr U] [--parent ID]
+               [--complexity 0-3] [--provider anthropic|openai]
 skald ac  <id> [<text> | --stdin]
 skald log <id> [<text> | --stdin]
 ```
@@ -52,6 +55,10 @@ skald set my-ticket --status reviewing --branch my-branch --pr https://github.co
 ```
 
 An empty string clears any field: `--paused ""` resumes a parked ticket, `--pr ""` unsets a PR.
+
+`--complexity` (an integer `0`–`3`) and `--provider` (`anthropic` | `openai`) are optional model-
+selection hints. skald stores no model names and applies no default for either — absent or `""` means
+unset, and what a status or complexity maps to is a decision made outside skald.
 
 Use `claim` when concurrent callers must share one deterministic ticket identity, such as a review
 queue keyed by a canonical PR. It prints `created <id>` for the winner or `existing <id>` for a

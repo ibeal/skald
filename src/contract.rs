@@ -31,12 +31,18 @@ pub enum Field {
     Link,
     Pr,
     Parent,
+    /// How demanding the work is, `0`–`3`. Optional, and skald applies no default: model selection
+    /// from this value is styrir policy, not skald's.
+    Complexity,
+    /// Which provider should run the work: `anthropic` | `openai`. Optional, and skald stores no
+    /// model names — only this coarse routing hint.
+    Provider,
     Created,
     Updated,
 }
 
 /// Every field, in the order they are written to a new ticket.
-pub const FIELDS: [Field; 10] = [
+pub const FIELDS: [Field; 12] = [
     Field::Title,
     Field::Status,
     Field::Paused,
@@ -45,6 +51,8 @@ pub const FIELDS: [Field; 10] = [
     Field::Link,
     Field::Pr,
     Field::Parent,
+    Field::Complexity,
+    Field::Provider,
     Field::Created,
     Field::Updated,
 ];
@@ -62,6 +70,10 @@ pub enum Shape {
     TicketId,
     /// `YYYY-MM-DD`.
     Date,
+    /// An integer `0`–`3`.
+    Complexity,
+    /// One bare value from [`PROVIDERS`].
+    Provider,
 }
 
 impl Field {
@@ -75,6 +87,8 @@ impl Field {
             Self::Link => "link",
             Self::Pr => "pr",
             Self::Parent => "parent",
+            Self::Complexity => "complexity",
+            Self::Provider => "provider",
             Self::Created => "created",
             Self::Updated => "updated",
         }
@@ -91,6 +105,8 @@ impl Field {
             Self::Repos => Shape::List,
             Self::Link | Self::Pr => Shape::Url,
             Self::Parent => Shape::TicketId,
+            Self::Complexity => Shape::Complexity,
+            Self::Provider => Shape::Provider,
             Self::Created | Self::Updated => Shape::Date,
         }
     }
@@ -129,6 +145,12 @@ impl Field {
             Self::Link => "The upstream ticket or issue, if this came from one.",
             Self::Pr => "The pull request, once there is one.",
             Self::Parent => "The ticket this one was split from or follows up.",
+            Self::Complexity => {
+                "How demanding the work is, 0-3. Optional; skald applies no default."
+            }
+            Self::Provider => {
+                "Which provider should run the work: anthropic | openai. Optional; skald applies no default."
+            }
             Self::Created => "When the ticket was created. Managed by skald.",
             Self::Updated => "When the ticket last changed. Managed by skald.",
         }
@@ -211,6 +233,33 @@ impl Status {
 /// `###` subsections as it likes.
 pub const OWNED_LEVEL: usize = 2;
 
+/// The provider vocabulary for the `provider` field.
+///
+/// skald stores no model names — only this coarse routing hint. Which model a provider and
+/// complexity map to is styrir policy, not skald's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    Anthropic,
+    Openai,
+}
+
+pub const PROVIDERS: [Provider; 2] = [Provider::Anthropic, Provider::Openai];
+
+impl Provider {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Anthropic => "anthropic",
+            Self::Openai => "openai",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        PROVIDERS
+            .into_iter()
+            .find(|provider| provider.name() == value)
+    }
+}
+
 /// A section of a ticket body.
 ///
 /// The body is **closed**, exactly like the field set: these two sections and nothing else. Each has
@@ -270,7 +319,7 @@ impl Owned {
 
 #[cfg(test)]
 mod tests {
-    use super::{FIELDS, Field, Owned, Shape, Status};
+    use super::{FIELDS, Field, Owned, Provider, Shape, Status};
 
     #[test]
     fn every_field_round_trips_through_its_key() {
@@ -385,5 +434,25 @@ mod tests {
         assert_eq!(Field::Pr.shape(), Shape::Url);
         assert_eq!(Field::Parent.shape(), Shape::TicketId);
         assert_eq!(Field::Updated.shape(), Shape::Date);
+        assert_eq!(Field::Complexity.shape(), Shape::Complexity);
+        assert_eq!(Field::Provider.shape(), Shape::Provider);
+    }
+
+    #[test]
+    fn complexity_and_provider_are_optional_and_apply_no_default() {
+        assert!(!Field::Complexity.required());
+        assert!(Field::Complexity.allows_empty());
+        assert!(!Field::Complexity.is_managed());
+        assert!(!Field::Provider.required());
+        assert!(Field::Provider.allows_empty());
+        assert!(!Field::Provider.is_managed());
+    }
+
+    #[test]
+    fn provider_is_a_closed_two_value_vocabulary() {
+        assert_eq!(Provider::parse("anthropic"), Some(Provider::Anthropic));
+        assert_eq!(Provider::parse("openai"), Some(Provider::Openai));
+        assert_eq!(Provider::parse("azure"), None);
+        assert_eq!(Provider::parse(""), None);
     }
 }

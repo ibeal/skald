@@ -46,9 +46,12 @@ way out of the store.
 
 ```text
 skald new <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+              [--complexity 0-3] [--provider anthropic|openai]
 skald claim <id> [--title T] [--status S] [--repo R]... [--link U] [--parent ID]
+                [--complexity 0-3] [--provider anthropic|openai]
 skald set <id> [--title T] [--status S] [--paused R] [--repo R]...
                [--branch B] [--link U] [--pr U] [--parent ID]
+               [--complexity 0-3] [--provider anthropic|openai]
 skald ac   <id> [<text> | --stdin]
 skald log  <id> [<text> | --stdin]
 skald show <id> [--section NAME] [--json]
@@ -115,9 +118,14 @@ branch:                 # optional
 link:                   # optional — the upstream ticket or issue, if any
 pr:                     # optional
 parent:                 # optional ticket id
+complexity:             # optional integer 0-3; skald applies no default
+provider:               # optional. anthropic | openai; skald applies no default
 created:                # YYYY-MM-DD, managed by skald
 updated:                # YYYY-MM-DD, managed by skald
 ```
+
+`complexity` and `provider` are model-selection hints, not model names: skald stores neither a model
+nor a status-derived default for either — that mapping is policy that lives outside skald.
 
 There is **no `id` field** — the filename is the identity, and a field whose only job is to agree with
 the filename is a field that can disagree with it. There is **no H1** either, for the same reason:
